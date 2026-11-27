@@ -1,3 +1,4 @@
+import { icons } from '../../components/icons';
 import confetti from 'canvas-confetti';
 import {
   AppSettings,
@@ -53,26 +54,6 @@ export type ArcadePhase = 'select' | 'playing' | 'results' | 'gameover';
 
 const LANES_TOP_TO_BOTTOM: HoleId[] = ['hole-up', 'hole-left', 'hole-right', 'hole-down', 'hole-a'];
 
-function difficultySvg(diff: 'novice' | 'original'): string {
-  if (diff === 'novice') {
-    return `
-      <svg class="diff-svg-icon" viewBox="0 0 48 48" aria-hidden="true">
-        <circle cx="24" cy="24" r="20" fill="#166534" stroke="#4ade80" stroke-width="3" />
-        <path d="M24 12 C28 16, 30 22, 24 30 C18 22, 20 16, 24 12 Z" fill="#86efac" />
-        <path d="M24 28 C16 26, 12 20, 14 14 C20 16, 23 21, 24 28 Z" fill="#4ade80" />
-        <path d="M24 28 C32 26, 36 20, 34 14 C28 16, 25 21, 24 28 Z" fill="#4ade80" />
-        <circle cx="24" cy="34" r="3" fill="#fde047" />
-      </svg>
-    `;
-  }
-  return `
-    <svg class="diff-svg-icon" viewBox="0 0 48 48" aria-hidden="true">
-      <circle cx="24" cy="24" r="20" fill="#7c2d12" stroke="#fb923c" stroke-width="3" />
-      <path d="M24 8 L29 19 L40 16 L33 26 L38 36 L24 31 L10 36 L15 26 L8 16 L19 19 Z" fill="#fb923c" />
-      <path d="M24 14 L27 21 L34 20 L29 26 L31 33 L24 29 L17 33 L19 26 L14 20 L21 21 Z" fill="#fde047" />
-    </svg>
-  `;
-}
 
 export class ArcadeMode {
   private container: HTMLElement;
@@ -112,6 +93,7 @@ export class ArcadeMode {
   private currentCombo = 0;
   private sustainBonusScore = 0;
   private lifeMeter = 50; // 0..100
+  private prevBestScore = 0;
   private lastJudgementText = '';
   private lastJudgementColor = '#ffffff';
   private lastJudgementPerf = 0;
@@ -123,6 +105,7 @@ export class ArcadeMode {
   private onPhaseChange: (phase: ArcadePhase) => void;
   private onZoomOcarina: (zoomed: boolean) => void;
   private onMissFlick: () => void;
+  private getHoleScreenPositions: () => Record<HoleId, { x: number; y: number }> | null;
   private onBackToMenu: () => void;
 
   constructor(
@@ -138,6 +121,7 @@ export class ArcadeMode {
       onPhaseChange: (phase: ArcadePhase) => void;
       onZoomOcarina: (zoomed: boolean) => void;
       onMissFlick: () => void;
+      getHoleScreenPositions?: () => Record<HoleId, { x: number; y: number }> | null;
       onBackToMenu: () => void;
     }
   ) {
@@ -153,6 +137,7 @@ export class ArcadeMode {
     this.onPhaseChange = callbacks.onPhaseChange;
     this.onZoomOcarina = callbacks.onZoomOcarina;
     this.onMissFlick = callbacks.onMissFlick;
+    this.getHoleScreenPositions = callbacks.getHoleScreenPositions ?? (() => null);
     this.onBackToMenu = callbacks.onBackToMenu;
     this.onPhaseChange('select');
     this.render();
@@ -293,17 +278,18 @@ export class ArcadeMode {
     if (overlay) {
       overlay.innerHTML = `
         <div class="pause-card">
-          <h2>PAUSED</h2>
-          <p class="muted-text">${this.selectedSong.title}</p>
-          <div class="pause-actions">
-            <button type="button" class="btn btn-gold btn-lg" id="btn-pause-resume">▶ Resume (ESC)</button>
-            <button type="button" class="btn btn-secondary" id="btn-pause-restart">↻ Restart</button>
-            <button type="button" class="btn btn-danger" id="btn-pause-quit">⏹ Song Select</button>
+          <p class="arcade-kicker-line">${this.selectedSong.title}</p>
+          <h2>Paused</h2>
+          <div class="arcade-menu-list">
+            <button type="button" class="arcade-menu-item" id="btn-pause-resume">Resume <kbd>Esc</kbd></button>
+            <button type="button" class="arcade-menu-item" id="btn-pause-restart">Start over</button>
+            <button type="button" class="arcade-menu-item" id="btn-pause-quit">Back to songs</button>
           </div>
         </div>
       `;
       overlay.classList.add('is-active');
       overlay.querySelector('#btn-pause-resume')?.addEventListener('click', () => this.resumeGame());
+      overlay.querySelector<HTMLButtonElement>('#btn-pause-resume')?.focus();
       overlay.querySelector('#btn-pause-restart')?.addEventListener('click', () => {
         this.hidePauseOverlay();
         this.startGame();
@@ -343,19 +329,9 @@ export class ArcadeMode {
     const h = rect.height;
     if (w <= 0 || h <= 0) return;
 
-    const labelColW = Math.min(64, Math.max(44, w * 0.08));
-    const receptorX = labelColW + Math.min(68, w * 0.1);
-    const laneIdx = LANES_TOP_TO_BOTTOM.indexOf(holeId);
-    const laneH = h / LANES_TOP_TO_BOTTOM.length;
-    const cy =
-      pitchBend === 'up'
-        ? laneIdx * laneH + laneH * 0.28
-        : pitchBend === 'down'
-          ? laneIdx * laneH + laneH * 0.72
-          : laneIdx * laneH + laneH * 0.5;
-
-    const ox = (rect.left + receptorX) / window.innerWidth;
-    const oy = (rect.top + cy) / window.innerHeight;
+    const lane = this.laneGeometry(w, h, rect)[holeId];
+    const ox = (rect.left + lane.x) / window.innerWidth;
+    const oy = (rect.top + lane.y - (pitchBend === 'up' ? 10 : pitchBend === 'down' ? -10 : 0)) / window.innerHeight;
     const color = HOLE_MAP[holeId].color;
 
     try {
@@ -559,7 +535,11 @@ export class ArcadeMode {
     if (hadCombo) this.updateComboBanner('break');
     this.updateLiveHud();
 
-    if (this.lifeMeter <= 0) {
+    if (this.settings.arcadeAssist === 'novice') {
+      // Novice is for learning: the bar can run low but never ends the song
+      this.lifeMeter = Math.max(8, this.lifeMeter);
+      this.updateLiveHud();
+    } else if (this.lifeMeter <= 0) {
       this.triggerGameOver();
     }
   }
@@ -635,6 +615,26 @@ export class ArcadeMode {
     this.startLoop();
   }
 
+  /** Hole positions in canvas pixels; evenly spaced near the bottom if the ocarina can't report them. */
+  private laneGeometry(w: number, h: number, rect: DOMRect): Record<HoleId, { x: number; y: number }> {
+    const screen = this.getHoleScreenPositions();
+    const out = {} as Record<HoleId, { x: number; y: number }>;
+    if (screen) {
+      for (const id of LANES_TOP_TO_BOTTOM) out[id] = { x: screen[id].x - rect.left, y: screen[id].y - rect.top };
+      return out;
+    }
+    const order: HoleId[] = ['hole-a', 'hole-up', 'hole-down', 'hole-left', 'hole-right'];
+    order.forEach((id, i) => {
+      out[id] = { x: w * (0.3 + i * 0.1), y: h * 0.78 };
+    });
+    return out;
+  }
+
+  private alpha(hex: string, a: number): string {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+
   private startLoop(): void {
     const canvas = this.container.querySelector<HTMLCanvasElement>('#arcade-highway-canvas');
     if (!canvas) return;
@@ -680,45 +680,28 @@ export class ArcadeMode {
 
       ctx.save();
       ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, w, h);
 
-      // Standardized 5-Track Partiture Background (matches Composer)
-      ctx.fillStyle = '#080c1a';
-      ctx.fillRect(0, 0, w, h);
-
-      const labelColW = Math.min(64, Math.max(44, w * 0.08));
-      const receptorX = labelColW + Math.min(68, w * 0.1);
-      const laneH = h / LANES_TOP_TO_BOTTOM.length;
+      // Lanes fall straight into the ocarina's holes.
+      const lanes = this.laneGeometry(w, h, rect);
+      const laneList = LANES_TOP_TO_BOTTOM.map((id) => ({ id, ...lanes[id] })).sort((p, q) => p.x - q.x);
+      const spacing = laneList.length > 1 ? (laneList[laneList.length - 1].x - laneList[0].x) / (laneList.length - 1) : 60;
+      const laneW = Math.max(26, Math.min(64, spacing * 0.78));
+      const noteW = laneW * 0.62;
+      const baseY = laneList.reduce((sum, l) => sum + l.y, 0) / laneList.length;
       const pxPerSec = 240 * this.settings.scrollSpeed;
       const offsetSec = this.settings.offsetMs / 1000;
+      const leftEdge = laneList[0].x - laneW;
+      const rightEdge = laneList[laneList.length - 1].x + laneW;
 
-      // Draw 5 horizontal tracks
-      LANES_TOP_TO_BOTTOM.forEach((holeId, idx) => {
-        const meta = HOLE_MAP[holeId];
-        const y0 = idx * laneH;
-        ctx.fillStyle = idx % 2 === 0 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.16)';
-        ctx.fillRect(labelColW, y0, w - labelColW, laneH);
-
-        ctx.strokeStyle = 'rgba(255,255,255,0.09)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(labelColW, y0 + laneH);
-        ctx.lineTo(w, y0 + laneH);
-        ctx.stroke();
-
-        // Left lane header badge (Composer style)
-        ctx.fillStyle = '#0d142b';
-        ctx.fillRect(0, y0, labelColW, laneH);
-        ctx.fillStyle = meta.color;
-        ctx.fillRect(0, y0, 4, laneH);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '800 13px Fredoka, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(meta.ootButton, labelColW * 0.52, y0 + laneH * 0.42);
-        ctx.fillStyle = 'rgba(247,241,227,0.65)';
-        ctx.font = '700 10px Nunito, sans-serif';
-        ctx.fillText(meta.noteName, labelColW * 0.52, y0 + laneH * 0.72);
-      });
+      // light beams, brightest where they meet the hole
+      for (const l of laneList) {
+        const beam = ctx.createLinearGradient(0, 0, 0, l.y);
+        beam.addColorStop(0, 'rgba(0,0,0,0)');
+        beam.addColorStop(1, this.alpha(HOLE_MAP[l.id].color, this.activeSustains.has(l.id) ? 0.22 : 0.09));
+        ctx.fillStyle = beam;
+        ctx.fillRect(l.x - laneW / 2, 0, laneW, l.y);
+      }
 
       const currentBeat = Math.floor(nowSec / secPerBeat);
       if (nowSec >= -0.05 && currentBeat > this.lastBeatTick) {
@@ -728,59 +711,28 @@ export class ArcadeMode {
         }
       }
 
-      // Beat vertical lines across all 5 tracks
-      const firstVisibleBeat = Math.floor((nowSec - 0.5) / secPerBeat);
-      const lastVisibleBeat = Math.ceil((nowSec + (w - receptorX) / pxPerSec) / secPerBeat);
-      for (let b = firstVisibleBeat; b <= lastVisibleBeat; b++) {
-        if (b < 0) continue;
-        const bx = receptorX + (b * secPerBeat - nowSec) * pxPerSec;
-        if (bx < labelColW) continue;
-        ctx.strokeStyle = b % 4 === 0 ? 'rgba(242, 201, 76, 0.32)' : 'rgba(255, 255, 255, 0.08)';
-        ctx.lineWidth = b % 4 === 0 ? 2 : 1;
+      // beat lines drift down with the notes
+      const firstBeat = Math.max(0, Math.floor(nowSec / secPerBeat));
+      const lastBeat = Math.ceil((nowSec + baseY / pxPerSec) / secPerBeat);
+      for (let b = firstBeat; b <= lastBeat; b++) {
+        const by = baseY - (b * secPerBeat - nowSec) * pxPerSec;
+        if (by < 0 || by > baseY) continue;
+        const fade = Math.min(1, by / (baseY * 0.6));
+        ctx.strokeStyle = b % 4 === 0 ? `rgba(220, 198, 143, ${0.28 * fade})` : `rgba(244, 234, 210, ${0.07 * fade})`;
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(bx, 0);
-        ctx.lineTo(bx, h);
+        ctx.moveTo(leftEdge, by);
+        ctx.lineTo(rightEdge, by);
         ctx.stroke();
       }
 
-      // Visible Judgement Threshold Zones around receptorX (GOOD / OKAY / BAD)
-      const badPx = 0.22 * pxPerSec;
-      const okayPx = 0.165 * pxPerSec;
-      const goodPx = 0.095 * pxPerSec;
-
-      ctx.fillStyle = 'rgba(248, 113, 113, 0.12)';
-      ctx.fillRect(Math.max(labelColW, receptorX - badPx), 0, badPx * 2, h);
-      ctx.fillStyle = 'rgba(242, 201, 76, 0.16)';
-      ctx.fillRect(Math.max(labelColW, receptorX - okayPx), 0, okayPx * 2, h);
-      ctx.fillStyle = 'rgba(74, 222, 128, 0.22)';
-      ctx.fillRect(Math.max(labelColW, receptorX - goodPx), 0, goodPx * 2, h);
-
-      // Threshold labels
-      ctx.font = '800 9px JetBrains Mono, monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#4ade80';
-      ctx.fillText('GOOD', receptorX, 10);
-      ctx.fillStyle = '#f2c94c';
-      ctx.fillText('OK', receptorX + (goodPx + okayPx) * 0.5, 10);
-      ctx.fillStyle = '#f87171';
-      ctx.fillText('BAD', receptorX + (okayPx + badPx) * 0.5, 10);
-
-      // Center receptor line
-      ctx.strokeStyle = 'rgba(242, 201, 76, 0.85)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(receptorX, 0);
-      ctx.lineTo(receptorX, h);
-      ctx.stroke();
-
-      // Update Active Long-Note Sustains (Hold Beam, Body Glow, Vibration, Hold Ticks, Continuous Sparks)
+      // Update Active Long-Note Sustains (Hold ticks + continuous sparks)
       for (const [holeId, sus] of Array.from(this.activeSustains.entries())) {
         const endSec = sus.note.targetSec + offsetSec + sus.note.durationSec;
         if (nowSec >= endSec) {
           this.activeSustains.delete(holeId);
           continue;
         }
-        // Hold Ticks every 0.25s
         if (nowSec - sus.lastTickSec >= 0.25) {
           sus.lastTickSec = nowSec;
           this.sustainBonusScore += 50;
@@ -789,47 +741,39 @@ export class ArcadeMode {
           this.updateComboBanner('hit');
           this.updateLiveHud();
         }
-        // Continuous Sparks every 100ms
         if (nowPerf - sus.lastSparkPerf >= 100) {
           sus.lastSparkPerf = nowPerf;
           this.fireHitSparks(holeId, sus.note.pitchBend, 5);
         }
       }
 
-      // Draw lane receptor rings (with vibration tween if held in Sustain State)
-      const targetRadius = Math.max(10, Math.min(18, laneH * 0.34));
-      LANES_TOP_TO_BOTTOM.forEach((holeId, idx) => {
-        const meta = HOLE_MAP[holeId];
-        const sus = this.activeSustains.get(holeId);
-        const vibX = sus ? Math.sin(nowPerf * 0.09) * 2.2 : 0;
-        const vibY = sus ? Math.cos(nowPerf * 0.11) * 1.5 : 0;
-        const cy = idx * laneH + laneH * 0.5 + vibY;
-
+      // target rings just outside each hole, breathing with the beat
+      const beatPhase = nowSec > 0 ? (nowSec % secPerBeat) / secPerBeat : 1;
+      const ringR = noteW * 0.62;
+      for (const l of laneList) {
+        const sus = this.activeSustains.get(l.id);
+        const color = HOLE_MAP[l.id].color;
         if (sus) {
-          // Hold Beam / Energy Flare at receptor
-          const flareGrad = ctx.createRadialGradient(receptorX + vibX, cy, 4, receptorX + vibX, cy, targetRadius * 2.1);
-          flareGrad.addColorStop(0, '#ffffff');
-          flareGrad.addColorStop(0.4, sus.color);
-          flareGrad.addColorStop(1, 'rgba(0,0,0,0)');
-          ctx.fillStyle = flareGrad;
+          const flare = ctx.createRadialGradient(l.x, l.y, 2, l.x, l.y, ringR * 2.4);
+          flare.addColorStop(0, this.alpha('#ffffff', 0.9));
+          flare.addColorStop(0.35, this.alpha(color, 0.6));
+          flare.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = flare;
           ctx.beginPath();
-          ctx.arc(receptorX + vibX, cy, targetRadius * 2.1, 0, Math.PI * 2);
+          ctx.arc(l.x, l.y, ringR * 2.4, 0, Math.PI * 2);
           ctx.fill();
         }
-
         ctx.beginPath();
-        ctx.arc(receptorX + vibX, cy, targetRadius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(11, 16, 33, 0.78)';
-        ctx.fill();
-        ctx.lineWidth = sus ? 4 : 2.5;
-        ctx.strokeStyle = sus ? '#ffffff' : meta.color;
+        ctx.arc(l.x, l.y, ringR * (1.08 + 0.08 * (1 - beatPhase)), 0, Math.PI * 2);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = this.alpha(color, 0.35 + 0.35 * (1 - beatPhase));
         ctx.stroke();
-      });
+      }
 
-      // Render Notes (Composer-standardized rounded pills with half-lane pitch-bend positioning)
+      // falling notes
       for (const n of this.chartNotes) {
         const meta = HOLE_MAP[n.holeId];
-        const laneIdx = LANES_TOP_TO_BOTTOM.indexOf(n.holeId);
+        const lane = lanes[n.holeId];
         const target = n.targetSec + offsetSec;
         const isHeldSustain = this.activeSustains.get(n.holeId)?.note.id === n.id;
 
@@ -852,90 +796,79 @@ export class ArcadeMode {
 
         if (n.judged && !isHeldSustain) continue;
 
-        const x = isHeldSustain ? receptorX : receptorX + (target - nowSec) * pxPerSec;
+        const headY = isHeldSustain ? lane.y : lane.y - (target - nowSec) * pxPerSec;
         const remainingDur = isHeldSustain ? Math.max(0, target + n.durationSec - nowSec) : n.durationSec;
-        const pillW = Math.max(26, remainingDur * pxPerSec);
-        if (x + pillW < labelColW || x > w + 80) continue;
+        const tail = Math.max(0, remainingDur * pxPerSec - noteW);
+        const top = headY - noteW / 2 - tail;
+        if (headY + noteW < 0 || top > h) continue;
 
-        const pillH = n.pitchBend === 'normal' ? laneH - 8 : (laneH - 8) * 0.5;
-        const pillY =
-          n.pitchBend === 'up'
-            ? laneIdx * laneH + 3
-            : n.pitchBend === 'down'
-              ? laneIdx * laneH + laneH * 0.5 + 1
-              : laneIdx * laneH + 4;
-
-        // Note Body + Illumination when actively held
+        // fade in from the dark at the top of the screen
+        const appear = Math.max(0, Math.min(1, (headY + 40) / (lane.y * 0.35)));
+        const passed = Math.max(0, headY - lane.y);
+        if (passed > 36) continue;
         ctx.save();
+        ctx.globalAlpha = appear * (1 - passed / 36);
+        if (tail > 0) {
+          ctx.fillStyle = this.alpha(meta.color, isHeldSustain ? 0.75 : 0.45);
+          ctx.beginPath();
+          ctx.roundRect(lane.x - noteW * 0.22, top, noteW * 0.44, tail + noteW / 2, noteW * 0.22);
+          ctx.fill();
+        }
+        // gem head
+        const g = ctx.createRadialGradient(lane.x - noteW * 0.15, headY - noteW * 0.15, 1, lane.x, headY, noteW / 2);
+        g.addColorStop(0, '#ffffff');
+        g.addColorStop(0.35, meta.color);
+        g.addColorStop(1, this.alpha(meta.color, 0.85));
+        ctx.fillStyle = g;
         if (isHeldSustain) {
-          const pulse = 0.75 + 0.25 * Math.sin(nowPerf * 0.03);
-          ctx.shadowColor = '#f2c94c';
-          ctx.shadowBlur = 16 * pulse;
-          ctx.fillStyle = meta.color;
-        } else {
-          ctx.fillStyle = meta.color;
+          ctx.shadowColor = meta.color;
+          ctx.shadowBlur = 18;
         }
         ctx.beginPath();
-        ctx.roundRect(x - 13, pillY, pillW, pillH, 7);
+        ctx.arc(lane.x, headY, noteW / 2, 0, Math.PI * 2);
         ctx.fill();
-
-        ctx.lineWidth = isHeldSustain ? 3 : 2;
-        ctx.strokeStyle = isHeldSustain
-          ? '#ffffff'
-          : n.pitchBend === 'up'
-            ? '#4ade80'
-            : n.pitchBend === 'down'
-              ? '#f87171'
-              : 'rgba(255,255,255,0.65)';
+        ctx.shadowBlur = 0;
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
         ctx.stroke();
+        if (n.pitchBend !== 'normal') {
+          // small chevron: bend up or down
+          const d = n.pitchBend === 'up' ? -1 : 1;
+          ctx.strokeStyle = '#0b0d16';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(lane.x - noteW * 0.18, headY - d * noteW * 0.08);
+          ctx.lineTo(lane.x, headY + d * noteW * 0.12);
+          ctx.lineTo(lane.x + noteW * 0.18, headY - d * noteW * 0.08);
+          ctx.stroke();
+        }
         ctx.restore();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `800 ${n.pitchBend === 'normal' ? 12 : 10}px Fredoka, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const label =
-          n.pitchBend === 'up'
-            ? `${meta.ootButton}↑`
-            : n.pitchBend === 'down'
-              ? `${meta.ootButton}↓`
-              : meta.ootButton;
-        ctx.fillText(label, x, pillY + pillH * 0.5);
       }
 
-      // Render Popping Notes (1.0 -> 1.22 scale tween on hit)
-      this.poppingNotes = this.poppingNotes.filter((pn) => nowPerf - pn.hitPerf < 150);
+      // hit bloom: a ring opening out of the hole
+      this.poppingNotes = this.poppingNotes.filter((pn) => nowPerf - pn.hitPerf < 260);
       for (const pn of this.poppingNotes) {
-        const prog = (nowPerf - pn.hitPerf) / 150;
-        const scale = 1 + 0.22 * Math.sin(prog * Math.PI * 0.5);
-        const alpha = 1 - prog;
-        const laneIdx = LANES_TOP_TO_BOTTOM.indexOf(pn.holeId);
-        const cy =
-          pn.pitchBend === 'up'
-            ? laneIdx * laneH + laneH * 0.28
-            : pn.pitchBend === 'down'
-              ? laneIdx * laneH + laneH * 0.72
-              : laneIdx * laneH + laneH * 0.5;
-
+        const prog = (nowPerf - pn.hitPerf) / 260;
+        const lane = lanes[pn.holeId];
         ctx.save();
-        ctx.globalAlpha = alpha;
-        ctx.translate(receptorX, cy);
-        ctx.scale(scale, scale);
+        ctx.globalAlpha = 1 - prog;
         ctx.beginPath();
-        ctx.arc(0, 0, targetRadius, 0, Math.PI * 2);
-        ctx.fillStyle = pn.color;
-        ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#ffffff';
+        ctx.arc(lane.x, lane.y, ringR * (1 + prog * 1.4), 0, Math.PI * 2);
+        ctx.lineWidth = 3 * (1 - prog) + 1;
+        ctx.strokeStyle = pn.color;
         ctx.stroke();
         ctx.restore();
       }
 
       if (this.lastJudgementText && nowPerf - this.lastJudgementPerf < 550) {
+        const t = (nowPerf - this.lastJudgementPerf) / 550;
+        ctx.save();
+        ctx.globalAlpha = 1 - t * t;
         ctx.fillStyle = this.lastJudgementColor;
-        ctx.font = '800 20px Fredoka, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(this.lastJudgementText, receptorX + 26, 26);
+        ctx.font = '600 26px Cinzel, serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.lastJudgementText, (leftEdge + rightEdge) / 2, Math.min(...laneList.map((l) => l.y)) - 70 - t * 10);
+        ctx.restore();
       }
 
       ctx.restore();
@@ -987,6 +920,7 @@ export class ArcadeMode {
       updatedAt: Date.now(),
     };
     const prev = this.highScores[entry.songId];
+    this.prevBestScore = prev?.score ?? 0;
     const playCount = (prev?.playCount ?? 0) + 1;
     if (!prev || entry.score >= prev.score) {
       this.highScores[entry.songId] = { ...entry, playCount };
@@ -1051,117 +985,96 @@ export class ArcadeMode {
     const prevKey = formatKeyCode(this.keyMapping.prevCategory);
     const nextKey = formatKeyCode(this.keyMapping.nextCategory);
 
+    const grade = hs?.grade && bestScore > 0 ? hs.grade : '';
+    const novice = this.settings.arcadeAssist === 'novice';
     this.container.innerHTML = `
       <div class="arcade-select-fullscreen">
         <img src="/not-the-ocarina-playing-simulator/assets/arcade-select-bg.jpg" alt="" class="arcade-bg-img" />
         <div class="arcade-bg-scrim"></div>
 
         <header class="select-top-bar">
-          <button type="button" class="btn btn-secondary" id="btn-arcade-menu">← Menu</button>
+          <button type="button" class="comp-bar-btn" id="btn-arcade-menu">${icons.back}<span>Menu</span></button>
 
-          <div class="category-bar" role="tablist" aria-label="Song Categories">
-            <button type="button" class="cat-arrow-btn" id="btn-cat-prev" title="Previous Category (${prevKey})">
-              ◀ <kbd>${prevKey}</kbd>
-            </button>
-            <div class="category-pills">
-              ${categories
-                .map(
-                  (c, i) => `
-                <button type="button" class="cat-pill ${i === this.activeCategoryIdx ? 'is-active' : ''}" data-cat-idx="${i}">
-                  ${c.name}
-                </button>`
-                )
-                .join('')}
-            </div>
-            <button type="button" class="cat-arrow-btn" id="btn-cat-next" title="Next Category (${nextKey})">
-              <kbd>${nextKey}</kbd> ▶
-            </button>
-          </div>
+          <nav class="cat-tabs" aria-label="Song lists">
+            <button type="button" class="cat-key" id="btn-cat-prev" aria-label="Previous list"><kbd>${prevKey}</kbd></button>
+            ${categories
+              .map(
+                (c, i) => `<button type="button" class="cat-tab ${i === this.activeCategoryIdx ? 'is-active' : ''}" data-cat-idx="${i}" aria-pressed="${i === this.activeCategoryIdx}">${c.name}</button>`
+              )
+              .join('')}
+            <button type="button" class="cat-key" id="btn-cat-next" aria-label="Next list"><kbd>${nextKey}</kbd></button>
+          </nav>
 
           <div class="select-top-tools">
-            <button type="button" class="btn btn-secondary ${this.settings.metronomeEnabled ? 'is-on' : ''}" id="btn-arcade-metro">
-              🥁 ${this.settings.metronomeEnabled ? 'On' : 'Off'}
-            </button>
-            <label class="btn btn-secondary file-btn">
-              📥 .txt
+            <button type="button" class="hud-icon-btn ${this.settings.metronomeEnabled ? 'is-on' : ''}" id="btn-arcade-metro" aria-pressed="${this.settings.metronomeEnabled}" title="Metronome ${this.settings.metronomeEnabled ? 'on' : 'off'}" aria-label="Metronome">${icons.metronome}</button>
+            <label class="hud-icon-btn file-btn" title="Open a notes file (.txt)" aria-label="Open a notes file">
+              ${icons.upload}
               <input type="file" id="arcade-import-txt" accept=".txt,text/plain" hidden />
             </label>
           </div>
         </header>
 
         <main class="select-main-grid">
-          <section class="music-roller-col" aria-label="Music Roller">
-            <div class="roller-nav-hint">▲ Up / Down ▼</div>
-            <div class="music-roller-list">
-              ${rollerItems
-                .map(({ song, offset }) => {
-                  const isCenter = offset === 0;
-                  if (isCenter) {
-                    return `
-                      <div class="roller-card is-focused" data-select-song="${song.id}">
-                        <div class="roller-focused-head">
-                          <div>
-                            <h2>${song.title}</h2>
-                            <p class="roller-meta">${song.artist || 'Custom'} · ${song.bpm} BPM</p>
-                          </div>
-                        </div>
-                        <div class="roller-diff-row" role="group" aria-label="Difficulty">
-                          <button type="button" class="diff-card is-novice ${this.settings.arcadeAssist === 'novice' ? 'is-selected' : ''}" id="btn-assist-novice">
-                            ${difficultySvg('novice')}
-                            <div>
-                              <strong>Novice</strong>
-                              <span>Guide melody + hit</span>
-                            </div>
-                          </button>
-                          <button type="button" class="diff-card is-original ${this.settings.arcadeAssist === 'original' ? 'is-selected' : ''}" id="btn-assist-original">
-                            ${difficultySvg('original')}
-                            <div>
-                              <strong>Original</strong>
-                              <span>Pure timing only</span>
-                            </div>
-                          </button>
-                        </div>
-                      </div>
-                    `;
-                  }
-                  return `
-                    <button type="button" class="roller-card is-side" data-select-song="${song.id}">
-                      <span class="roller-side-title">${song.title}</span>
-                      <span class="roller-side-bpm">${song.bpm} BPM</span>
-                    </button>
-                  `;
-                })
-                .join('')}
-            </div>
+          <section class="song-roll" aria-label="Songs">
+            ${songs
+              .map((song, i) => {
+                const best = this.highScores[song.id];
+                const g = best && best.score > 0 ? best.grade : '';
+                const focused = song.id === this.selectedSong.id;
+                return `
+                  <button type="button" class="roller-card ${focused ? 'is-focused' : 'is-side'}" data-select-song="${song.id}" aria-current="${focused}">
+                    <span class="roll-num">${String(i + 1).padStart(2, '0')}</span>
+                    <span class="roll-title">${song.title}</span>
+                    <span class="roll-grade">${g}</span>
+                    <span class="roll-bpm">${song.bpm} BPM</span>
+                  </button>`;
+              })
+              .join('')}
+            <p class="roll-hint"><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> play</p>
           </section>
 
-          <aside class="song-stats-panel" aria-label="Song Statistics">
-            <h3>SONG RECORD</h3>
-            <div class="stats-song-name">${this.selectedSong.title}</div>
-            <div class="stats-rows">
-              <div class="stat-row"><span>Total Notes</span><strong>${totalNotes}</strong></div>
-              <div class="stat-row"><span>Played</span><strong>${playedCount}</strong></div>
-              <div class="stat-row"><span>Correct Notes</span><strong class="is-good">${correctNotes}</strong></div>
-              <div class="stat-row"><span>Missed Notes</span><strong class="is-bad">${missedNotes}</strong></div>
-              <div class="stat-row is-score"><span>Best Score</span><strong class="is-gold">${bestScore.toLocaleString()}</strong></div>
+          <aside class="stage-card" aria-label="Selected song">
+            <p class="arcade-kicker-line">${this.selectedSong.artist || 'Your composition'} · ${this.selectedSong.bpm} BPM · ${totalNotes} notes</p>
+            <h2 class="stage-title">${this.selectedSong.title}</h2>
+
+            <div class="stage-record">
+              ${
+                bestScore > 0
+                  ? `<span class="stage-grade">${grade}</span>
+                     <span class="stage-best"><strong>${bestScore.toLocaleString()}</strong><span>best score</span></span>
+                     <span class="stage-best"><strong>${correctNotes}<small>/${totalNotes}</small></strong><span>notes hit</span></span>
+                     <span class="stage-best"><strong>${playedCount}</strong><span>plays</span></span>`
+                  : `<span class="stage-fresh">Not played yet. Your first mark is waiting.</span>`
+              }
+            </div>
+
+            <div class="stage-diff" role="radiogroup" aria-label="Difficulty">
+              <button type="button" class="diff-option ${novice ? 'is-selected' : ''}" id="btn-assist-novice" role="radio" aria-checked="${novice}">
+                <strong>Novice</strong><span>The melody guides you. You can't fail.</span>
+              </button>
+              <button type="button" class="diff-option ${!novice ? 'is-selected' : ''}" id="btn-assist-original" role="radio" aria-checked="${!novice}">
+                <strong>Original</strong><span>Just you and the rhythm. Miss too many and the song ends.</span>
+              </button>
             </div>
 
             <div class="offset-control-row">
-              <span>Timing Offset</span>
+              <span>Timing offset</span>
               <div class="offset-pill">
-                <button type="button" class="icon-btn" id="btn-offset-minus" aria-label="Decrease Offset">-</button>
-                <span id="arcade-offset-val">${this.settings.offsetMs > 0 ? '+' : ''}${this.settings.offsetMs}ms</span>
-                <button type="button" class="icon-btn" id="btn-offset-plus" aria-label="Increase Offset">+</button>
+                <button type="button" class="icon-btn" id="btn-offset-minus" aria-label="Earlier">−</button>
+                <span id="arcade-offset-val">${this.settings.offsetMs > 0 ? '+' : ''}${this.settings.offsetMs} ms</span>
+                <button type="button" class="icon-btn" id="btn-offset-plus" aria-label="Later">+</button>
               </div>
             </div>
 
-            <button type="button" class="btn btn-gold btn-lg start-stage-btn" id="btn-arcade-start">
-              ▶ START STAGE
+            <button type="button" class="stage-start" id="btn-arcade-start">
+              <span>Play</span><kbd>Enter</kbd>
             </button>
           </aside>
         </main>
       </div>
     `;
+    void missedNotes;
+    void rollerItems;
 
     this.container.querySelector('#btn-arcade-menu')?.addEventListener('click', () => {
       playUiClick();
@@ -1182,7 +1095,7 @@ export class ArcadeMode {
       });
     });
 
-    this.container.querySelectorAll<HTMLElement>('.roller-card.is-side[data-select-song]').forEach((btn) => {
+    this.container.querySelectorAll<HTMLElement>('.roller-card[data-select-song]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const found = songs.find((s) => s.id === btn.dataset.selectSong);
         if (!found) return;
@@ -1250,6 +1163,7 @@ export class ArcadeMode {
       haptics.tapButton();
       this.startGame();
     });
+    this.container.querySelector('.roller-card.is-focused')?.scrollIntoView({ block: 'nearest' });
   }
 
   private renderPlayingScreen(): void {
@@ -1270,9 +1184,9 @@ export class ArcadeMode {
 
           <div class="arcade-stats-pills">
             <span class="stat-pill" id="arcade-live-score">0</span>
-            <button type="button" class="btn btn-secondary" id="btn-arcade-pause" title="Pause (ESC)">⏸ Pause</button>
-            <button type="button" class="btn btn-secondary" id="btn-arcade-restart" title="Restart">↻</button>
-            <button type="button" class="btn btn-danger" id="btn-arcade-quit">⏹ Quit</button>
+            <button type="button" class="hud-icon-btn" id="btn-arcade-pause" title="Pause (Esc)" aria-label="Pause">${icons.pause}</button>
+            <button type="button" class="hud-icon-btn" id="btn-arcade-restart" title="Restart" aria-label="Restart">${icons.restart}</button>
+            <button type="button" class="hud-icon-btn" id="btn-arcade-quit" title="Quit to song list" aria-label="Quit">${icons.close}</button>
           </div>
         </div>
 
@@ -1300,20 +1214,37 @@ export class ArcadeMode {
   }
 
   private renderGameOverScreen(): void {
+    const hit = this.counts.perfect + this.counts.great + this.counts.good;
+    const reason =
+      hit === 0
+        ? `No notes were heard. Cover the holes with <kbd>${formatKeyCode(this.keyMapping['hole-a'])}</kbd> <kbd>${formatKeyCode(this.keyMapping['hole-down'])}</kbd> <kbd>${formatKeyCode(this.keyMapping['hole-right'])}</kbd> <kbd>${formatKeyCode(this.keyMapping['hole-up'])}</kbd> <kbd>${formatKeyCode(this.keyMapping['hole-left'])}</kbd> as the notes reach them.`
+        : `You played ${hit} of ${this.counts.totalNotes} notes before the song slipped away.`;
     this.container.innerHTML = `
       <div class="arcade-results-fullscreen">
         <img src="/not-the-ocarina-playing-simulator/assets/arcade-results-bg.jpg" alt="" class="arcade-bg-img" />
         <div class="arcade-bg-scrim is-dark"></div>
         <div class="arcade-outcome-card is-gameover">
-          <h2>STAGE FAILED</h2>
-          <p>Your Life Bar emptied on <strong>${this.selectedSong.title}</strong>.</p>
-          <div class="outcome-actions">
-            <button type="button" class="btn btn-gold btn-lg" id="btn-arcade-retry">🔄 Retry Stage</button>
-            <button type="button" class="btn btn-secondary btn-lg" id="btn-arcade-back">🎵 Song Select</button>
+          <p class="arcade-kicker-line">${this.selectedSong.title}</p>
+          <h2>The song faded</h2>
+          <p class="outcome-reason">${reason}</p>
+          <div class="arcade-menu-list">
+            <button type="button" class="arcade-menu-item" id="btn-arcade-retry">Try again <kbd>Enter</kbd></button>
+            ${this.settings.arcadeAssist === 'original' ? '<button type="button" class="arcade-menu-item" id="btn-arcade-novice">Try it on Novice</button>' : ''}
+            <button type="button" class="arcade-menu-item" id="btn-arcade-back">Back to songs <kbd>Esc</kbd></button>
           </div>
         </div>
       </div>
     `;
+    this.bindOutcomeButtons();
+    this.container.querySelector('#btn-arcade-novice')?.addEventListener('click', () => {
+      playUiClick();
+      this.settings.arcadeAssist = 'novice';
+      this.onSettingsChange({ ...this.settings });
+      this.startGame();
+    });
+  }
+
+  private bindOutcomeButtons(): void {
     this.container.querySelector('#btn-arcade-retry')?.addEventListener('click', () => {
       playUiClick();
       this.startGame();
@@ -1323,6 +1254,33 @@ export class ArcadeMode {
       this.setPhase('select');
       this.render();
     });
+    this.container.querySelector<HTMLButtonElement>('#btn-arcade-retry')?.focus();
+  }
+
+  /** Enter replays, Escape returns to the song list (results and game-over screens). */
+  handleOutcomeKeyDown(e: KeyboardEvent): boolean {
+    if (this.phase !== 'results' && this.phase !== 'gameover') return false;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      playUiClick();
+      this.setPhase('select');
+      this.render();
+      return true;
+    }
+    return false;
+  }
+
+  /** Score counts up like an arcade cabinet. */
+  private countUp(el: HTMLElement, to: number): void {
+    const start = performance.now();
+    const dur = 1100;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = Math.round(to * eased).toLocaleString();
+      if (t < 1 && el.isConnected) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   private renderResultsScreen(): void {
@@ -1332,54 +1290,35 @@ export class ArcadeMode {
     const okayCount = this.counts.good;
     const badCount = this.counts.bad + this.counts.miss;
 
+    const prevBest = this.prevBestScore;
+    const isNewBest = totalScore > 0 && totalScore > prevBest;
     this.container.innerHTML = `
       <div class="arcade-results-fullscreen">
         <img src="/not-the-ocarina-playing-simulator/assets/arcade-results-bg.jpg" alt="" class="arcade-bg-img" />
         <div class="arcade-bg-scrim"></div>
 
-        <header class="results-top-bar">
-          <div class="results-badge">STAGE RESULTS</div>
-          <div class="results-song-title-right">${this.selectedSong.title}</div>
-        </header>
+        <main class="results-stage">
+          <p class="arcade-kicker-line">${this.selectedSong.title} · ${this.settings.arcadeAssist === 'novice' ? 'Novice' : 'Original'}</p>
+          <div class="results-grade" aria-label="Grade ${res.grade}">${res.grade}</div>
+          ${isNewBest ? '<p class="results-new-best">New best</p>' : ''}
+          <p class="results-score"><strong id="results-score-num">0</strong><span>score</span></p>
 
-        <main class="results-center-card">
-          <div class="results-left-col">
-            <div class="results-diff-pill">
-              ${difficultySvg(this.settings.arcadeAssist)}
-              <span>${this.settings.arcadeAssist.toUpperCase()}</span>
-            </div>
-            <div class="results-grade-badge">${res.grade}</div>
-            <div class="results-score-box">
-              <span class="score-caption">SCORE</span>
-              <strong class="results-score">${totalScore.toLocaleString()}</strong>
-            </div>
-          </div>
+          <dl class="results-judges">
+            <div class="is-good"><dt>Good</dt><dd>${goodCount}</dd></div>
+            <div class="is-okay"><dt>Okay</dt><dd>${okayCount}</dd></div>
+            <div class="is-bad"><dt>Missed</dt><dd>${badCount}</dd></div>
+            <div><dt>Best combo</dt><dd>${this.counts.maxCombo}</dd></div>
+          </dl>
 
-          <div class="results-right-col">
-            <div class="judgement-grid-3">
-              <div class="j-item is-good"><span>GOOD</span><strong>${goodCount}</strong></div>
-              <div class="j-item is-okay"><span>OKAY</span><strong>${okayCount}</strong></div>
-              <div class="j-item is-bad"><span>BAD</span><strong>${badCount}</strong></div>
-              <div class="j-item is-combo"><span>MAX COMBO</span><strong>${this.counts.maxCombo}</strong></div>
-            </div>
-
-            <div class="outcome-actions">
-              <button type="button" class="btn btn-gold btn-lg" id="btn-arcade-retry">🔄 Play Again</button>
-              <button type="button" class="btn btn-primary btn-lg" id="btn-arcade-back">🎵 Song Select</button>
-            </div>
+          <div class="arcade-menu-list is-row">
+            <button type="button" class="arcade-menu-item" id="btn-arcade-retry">Play again <kbd>Enter</kbd></button>
+            <button type="button" class="arcade-menu-item" id="btn-arcade-back">Back to songs <kbd>Esc</kbd></button>
           </div>
         </main>
       </div>
     `;
-
-    this.container.querySelector('#btn-arcade-retry')?.addEventListener('click', () => {
-      playUiClick();
-      this.startGame();
-    });
-    this.container.querySelector('#btn-arcade-back')?.addEventListener('click', () => {
-      playUiClick();
-      this.setPhase('select');
-      this.render();
-    });
+    this.bindOutcomeButtons();
+    const num = this.container.querySelector<HTMLElement>('#results-score-num');
+    if (num) this.countUp(num, totalScore);
   }
 }

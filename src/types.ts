@@ -12,11 +12,11 @@ export interface HoleMeta {
 }
 
 export const OCARINA_HOLES: HoleMeta[] = [
-  { id: 'hole-a', label: 'A', ootButton: 'A', noteName: 'D5', frequency: 587.33, color: '#2f80ed', defaultKey: 'KeyJ' },
-  { id: 'hole-down', label: '▼', ootButton: '▼', noteName: 'F5', frequency: 698.46, color: '#f2c94c', defaultKey: 'KeyK' },
-  { id: 'hole-right', label: '▶', ootButton: '▶', noteName: 'A5', frequency: 880.0, color: '#27ae60', defaultKey: 'KeyL' },
-  { id: 'hole-left', label: '◀', ootButton: '◀', noteName: 'B5', frequency: 987.77, color: '#ff6b35', defaultKey: 'KeyI' },
-  { id: 'hole-up', label: '▲', ootButton: '▲', noteName: 'D6', frequency: 1174.66, color: '#e74c3c', defaultKey: 'KeyU' },
+  { id: 'hole-a', label: 'A', ootButton: 'A', noteName: 'D5', frequency: 587.33, color: '#5b9dff', defaultKey: 'KeyJ' },
+  { id: 'hole-down', label: '▼', ootButton: '▼', noteName: 'F5', frequency: 698.46, color: '#ffc845', defaultKey: 'KeyK' },
+  { id: 'hole-right', label: '▶', ootButton: '▶', noteName: 'A5', frequency: 880.0, color: '#3ddc97', defaultKey: 'KeyL' },
+  { id: 'hole-left', label: '◀', ootButton: '◀', noteName: 'B5', frequency: 987.77, color: '#ff8a5c', defaultKey: 'KeyI' },
+  { id: 'hole-up', label: '▲', ootButton: '▲', noteName: 'D6', frequency: 1174.66, color: '#e879c6', defaultKey: 'KeyU' },
 ];
 
 export const HOLE_MAP: Record<HoleId, HoleMeta> = Object.fromEntries(

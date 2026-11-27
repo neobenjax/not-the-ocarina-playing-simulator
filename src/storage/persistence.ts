@@ -15,6 +15,7 @@ const KEYS = {
   customSkins: 'ocarina_sim_custom_skins_v1',
   playlists: 'ocarina_sim_playlists_v1',
   highScores: 'ocarina_sim_scores_v1',
+  tutorialDone: 'ocarina_sim_tutorial_done_v1',
 };
 
 function safeRead<T>(key: string, fallback: T): T {
@@ -133,4 +134,12 @@ export function formatKeyCode(code: string): string {
   if (code === 'BracketLeft') return '[';
   if (code === 'BracketRight') return ']';
   return code.toUpperCase();
+}
+
+export function loadTutorialDone(): boolean {
+  return safeRead<boolean>(KEYS.tutorialDone, false);
+}
+
+export function saveTutorialDone(done: boolean): void {
+  safeWrite(KEYS.tutorialDone, done);
 }

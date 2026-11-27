@@ -56,6 +56,7 @@ export class ArcadeMode {
   };
   private currentCombo = 0;
   private consecutiveMisses = 0;
+  private soulMeter = 0; // 0..100
   private lastJudgementText = '';
   private lastJudgementColor = '#ffffff';
   private lastJudgementPerf = 0;
@@ -101,7 +102,6 @@ export class ArcadeMode {
     const nowSec = this.getCurrentSongSec();
     const offsetSec = this.settings.offsetMs / 1000;
 
-    // Find earliest unjudged note within +/- 220ms window
     let candidate: ChartNoteRuntime | null = null;
     let bestAbsDiff = Infinity;
     for (const n of this.chartNotes) {
@@ -113,13 +113,9 @@ export class ArcadeMode {
       }
     }
 
-    if (!candidate) {
-      // Struck when no note is near
-      return false;
-    }
+    if (!candidate) return false;
 
     if (candidate.holeId !== holeId) {
-      // Wrong hole!
       candidate.judged = true;
       this.registerMiss(HOLE_MAP[candidate.holeId].frequency);
       return true;
@@ -139,19 +135,22 @@ export class ArcadeMode {
     }
 
     this.consecutiveMisses = 0;
+    const soulStep = 100 / Math.max(1, this.counts.totalNotes);
     if (j === 'PERFECT') {
       this.counts.perfect++;
       this.currentCombo++;
+      this.soulMeter = Math.min(100, this.soulMeter + soulStep * 1.15);
       haptics.hitPerfect();
       this.setJudgementPopup('PERFECT!', '#27ae60');
     } else if (j === 'GREAT') {
       this.counts.great++;
       this.currentCombo++;
+      this.soulMeter = Math.min(100, this.soulMeter + soulStep * 0.9);
       haptics.hitGreat();
       this.setJudgementPopup('GREAT!', '#00d2ff');
     } else if (j === 'GOOD') {
       this.counts.good++;
-      // PIU Phoenix 2: GOOD holds combo without advancing it
+      this.soulMeter = Math.min(100, this.soulMeter + soulStep * 0.5);
       haptics.hitGood();
       this.setJudgementPopup('GOOD', '#f2c94c');
     } else {
@@ -165,7 +164,6 @@ export class ArcadeMode {
       this.counts.maxCombo = this.currentCombo;
     }
 
-    // Play the Ocarina note crisply on hit!
     const vol = this.settings.masterVolume * this.settings.ocarinaVolume;
     ocarinaSynth.playOneShot(HOLE_MAP[holeId].frequency, Math.min(0.65, candidate.durationSec), vol);
     this.updateLiveHud();
@@ -176,12 +174,12 @@ export class ArcadeMode {
     this.counts.miss++;
     this.currentCombo = 0;
     this.consecutiveMisses++;
+    this.soulMeter = Math.max(0, this.soulMeter - 4);
     ocarinaSynth.playDistortedMiss(freq);
     haptics.miss();
     this.setJudgementPopup('MISS!', '#e74c3c');
     this.updateLiveHud();
 
-    // More than 10 notes in a row missed -> Game Over!
     if (this.consecutiveMisses > 10) {
       this.triggerGameOver();
     }
@@ -227,6 +225,7 @@ export class ArcadeMode {
     };
     this.currentCombo = 0;
     this.consecutiveMisses = 0;
+    this.soulMeter = 0;
     this.lastJudgementText = '';
     this.lastBeatTick = -10;
     this.songStartPerf = performance.now();
@@ -260,18 +259,16 @@ export class ArcadeMode {
       ctx.save();
       ctx.scale(dpr, dpr);
 
-      // Draw Taiko-meets-Hyrule Highway Background
       const grad = ctx.createLinearGradient(0, 0, w, 0);
-      grad.addColorStop(0, '#121c3d');
-      grad.addColorStop(0.5, '#0b132b');
-      grad.addColorStop(1, '#18112e');
+      grad.addColorStop(0, '#161b2e');
+      grad.addColorStop(0.5, '#1d2233');
+      grad.addColorStop(1, '#261a2e');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
-      // Center rail line
       const centerY = h * 0.52;
-      const receptorX = Math.min(110, w * 0.18);
-      ctx.strokeStyle = 'rgba(242, 201, 76, 0.22)';
+      const receptorX = Math.min(92, w * 0.16);
+      ctx.strokeStyle = 'rgba(242, 201, 76, 0.25)';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(0, centerY);
@@ -282,7 +279,6 @@ export class ArcadeMode {
       const pxPerSec = 240 * this.settings.scrollSpeed;
       const offsetSec = this.settings.offsetMs / 1000;
 
-      // Metronome & Beat Grid Lines
       const currentBeat = Math.floor(nowSec / secPerBeat);
       if (nowSec >= -0.05 && currentBeat > this.lastBeatTick) {
         this.lastBeatTick = currentBeat;
@@ -296,35 +292,33 @@ export class ArcadeMode {
       for (let b = firstVisibleBeat; b <= lastVisibleBeat; b++) {
         if (b < 0) continue;
         const bx = receptorX + (b * secPerBeat - nowSec) * pxPerSec;
-        ctx.strokeStyle = b % 4 === 0 ? 'rgba(242, 201, 76, 0.32)' : 'rgba(255, 255, 255, 0.08)';
+        ctx.strokeStyle = b % 4 === 0 ? 'rgba(242, 201, 76, 0.36)' : 'rgba(255, 255, 255, 0.09)';
         ctx.lineWidth = b % 4 === 0 ? 2 : 1;
         ctx.beginPath();
-        ctx.moveTo(bx, 18);
-        ctx.lineTo(bx, h - 18);
+        ctx.moveTo(bx, 12);
+        ctx.lineTo(bx, h - 12);
         ctx.stroke();
       }
 
-      // Receptor Ring (Taiko Drum / Triforce Target)
+      // Taiko Drum / Triforce Receptor
       ctx.beginPath();
-      ctx.arc(receptorX, centerY, 32, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(242, 201, 76, 0.14)';
+      ctx.arc(receptorX, centerY, 30, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(242, 201, 76, 0.15)';
       ctx.fill();
       ctx.lineWidth = 4;
       ctx.strokeStyle = '#f2c94c';
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(receptorX, centerY, 22, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0, 210, 255, 0.55)';
+      ctx.arc(receptorX, centerY, 20, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0, 210, 255, 0.6)';
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Update & Draw Notes (Right -> Left)
       for (const n of this.chartNotes) {
         const meta = HOLE_MAP[n.holeId];
         const target = n.targetSec + offsetSec;
 
-        // Novice Assist Guide Audio
         if (!n.guidePlayed && nowSec >= target) {
           n.guidePlayed = true;
           if (this.settings.arcadeAssist === 'novice') {
@@ -333,7 +327,6 @@ export class ArcadeMode {
           }
         }
 
-        // Missed note check (passed beyond 200ms late)
         if (!n.judged && nowSec - target > 0.2) {
           n.judged = true;
           this.registerMiss(meta.frequency);
@@ -348,18 +341,16 @@ export class ArcadeMode {
         const x = receptorX + (target - nowSec) * pxPerSec;
         if (x < -80 || x > w + 80) continue;
 
-        // Hold tail if duration >= 0.45s
         if (n.durationSec >= 0.45) {
           const tailW = n.durationSec * pxPerSec;
           ctx.fillStyle = meta.color;
           ctx.globalAlpha = 0.38;
-          ctx.fillRect(x, centerY - 11, tailW, 22);
+          ctx.fillRect(x, centerY - 10, tailW, 20);
           ctx.globalAlpha = 1;
         }
 
-        // Taiko-style Note Orb
         ctx.beginPath();
-        ctx.arc(x, centerY, 24, 0, Math.PI * 2);
+        ctx.arc(x, centerY, 22, 0, Math.PI * 2);
         ctx.fillStyle = meta.color;
         ctx.fill();
         ctx.lineWidth = 3.5;
@@ -367,28 +358,26 @@ export class ArcadeMode {
         ctx.stroke();
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = '800 13px Fredoka, sans-serif';
+        ctx.font = '800 12px Fredoka, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(meta.ootButton, x, centerY + 1);
       }
 
-      // Countdown overlay before beat 0
       if (nowSec < 0) {
         const countNum = Math.ceil(-nowSec);
         ctx.fillStyle = '#f2c94c';
-        ctx.font = '800 44px Fredoka, sans-serif';
+        ctx.font = '800 40px Fredoka, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(countNum > 0 ? String(countNum) : 'PLAY!', w * 0.5, h * 0.25);
       }
 
-      // Judgement Popup
       if (this.lastJudgementText && performance.now() - this.lastJudgementPerf < 650) {
         ctx.fillStyle = this.lastJudgementColor;
-        ctx.font = '800 26px Fredoka, sans-serif';
+        ctx.font = '800 24px Fredoka, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(this.lastJudgementText, receptorX + 90, centerY - 50);
+        ctx.fillText(this.lastJudgementText, receptorX + 82, centerY - 42);
       }
 
       ctx.restore();
@@ -444,12 +433,16 @@ export class ArcadeMode {
     const scoreEl = this.container.querySelector('#arcade-live-score');
     const comboEl = this.container.querySelector('#arcade-live-combo');
     const missEl = this.container.querySelector('#arcade-live-miss-streak');
+    const soulFill = this.container.querySelector<HTMLElement>('#arcade-soul-fill');
     const res = calculatePhoenix2Score(this.counts);
     if (scoreEl) scoreEl.textContent = `${res.score.toLocaleString()} (${res.grade})`;
     if (comboEl) comboEl.textContent = `${this.currentCombo} COMBO`;
     if (missEl) {
-      missEl.textContent = `Miss Streak: ${this.consecutiveMisses} / 10`;
+      missEl.textContent = `Miss: ${this.consecutiveMisses}/10`;
       missEl.classList.toggle('is-danger', this.consecutiveMisses >= 7);
+    }
+    if (soulFill) {
+      soulFill.style.width = `${Math.round(this.soulMeter)}%`;
     }
   }
 
@@ -468,13 +461,20 @@ export class ArcadeMode {
   private renderSelectScreen(): void {
     const customTracks = this.playlists.flatMap((p) => p.tracks);
     const allCustom = [...customTracks, ...this.importedSongs];
+    const allSongs = [...ZELDA_SONGS, ...allCustom];
 
     this.container.innerHTML = `
       <div class="arcade-select-shell">
         <div class="arcade-header-row">
-          <div>
-            <h2 style="margin:0;font-family:var(--font-display);color:var(--taiko-orange);">🥁 Mode 2: Arcade Rhythm</h2>
-            <p class="muted-text">Taiko-style right-to-left highway · Pump It Up Phoenix 2 scoring (1,000,000 / SSS+)</p>
+          <div class="arcade-select-title-wrap">
+            <select id="arcade-song-dropdown" class="text-input arcade-song-dropdown" aria-label="Select Song">
+              ${ZELDA_SONGS.map(
+                (s) => `<option value="${s.id}" ${this.selectedSong.id === s.id ? 'selected' : ''}>🎵 ${s.title} (LV.${s.level} · ${s.bpm} BPM)</option>`
+              ).join('')}
+              ${allCustom.map(
+                (s) => `<option value="${s.id}" ${this.selectedSong.id === s.id ? 'selected' : ''}>⭐ ${s.title} (Custom · ${s.bpm} BPM)</option>`
+              ).join('')}
+            </select>
           </div>
 
           <div class="arcade-options-bar">
@@ -546,6 +546,16 @@ export class ArcadeMode {
         </div>
       </div>
     `;
+
+    this.container.querySelector<HTMLSelectElement>('#arcade-song-dropdown')?.addEventListener('change', (e) => {
+      const id = (e.target as HTMLSelectElement).value;
+      const found = allSongs.find((s) => s.id === id);
+      if (!found) return;
+      playUiClick();
+      haptics.tapButton();
+      this.selectedSong = found;
+      this.render();
+    });
 
     this.container.querySelector('#btn-assist-novice')?.addEventListener('click', () => {
       playUiClick();
@@ -628,22 +638,45 @@ export class ArcadeMode {
 
   private renderPlayingScreen(): void {
     this.container.innerHTML = `
-      <div class="arcade-play-shell">
-        <div class="arcade-live-hud">
-          <div>
+      <div class="taiko-stage-shell">
+        <div class="taiko-top-banner">
+          <div class="taiko-banner-info">
             <strong class="arcade-song-title">${this.selectedSong.title}</strong>
-            <span class="muted-text"> (${this.settings.arcadeAssist.toUpperCase()})</span>
+            <span class="taiko-bpm-badge">BPM ${this.selectedSong.bpm} · ${this.settings.arcadeAssist.toUpperCase()}</span>
           </div>
           <div class="arcade-stats-pills">
             <span class="stat-pill" id="arcade-live-score">0 (F)</span>
             <span class="stat-pill combo-pill" id="arcade-live-combo">0 COMBO</span>
-            <span class="stat-pill miss-pill" id="arcade-live-miss-streak">Miss Streak: 0 / 10</span>
+            <span class="stat-pill miss-pill" id="arcade-live-miss-streak">Miss: 0/10</span>
+            <button type="button" class="btn btn-secondary" id="btn-arcade-restart" title="Restart">↻</button>
+            <button type="button" class="btn btn-danger" id="btn-arcade-quit">⏹ Quit</button>
           </div>
-          <button type="button" class="btn btn-danger" id="btn-arcade-quit">⏹ Quit</button>
         </div>
+
+        <div class="taiko-soul-gauge">
+          <span class="soul-label">SOUL</span>
+          <div class="soul-track">
+            <div class="soul-fill" id="arcade-soul-fill" style="width:0%"></div>
+          </div>
+          <span class="soul-clear-tag">CLEAR</span>
+        </div>
+
         <canvas id="arcade-highway-canvas" class="arcade-highway-canvas"></canvas>
+
+        <div class="taiko-festival-stage">
+          <img src="/not-the-ocarina-playing-simulator/assets/arcade-stage-banner.jpg" alt="" class="festival-bg-img" />
+          <div class="festival-overlay">
+            <span>Tap the Ocarina holes below in rhythm!</span>
+          </div>
+        </div>
       </div>
     `;
+
+    this.container.querySelector('#btn-arcade-restart')?.addEventListener('click', () => {
+      playUiClick();
+      haptics.tapButton();
+      this.startGame();
+    });
 
     this.container.querySelector('#btn-arcade-quit')?.addEventListener('click', () => {
       playUiClick();
@@ -679,14 +712,18 @@ export class ArcadeMode {
   private renderResultsScreen(): void {
     const res = calculatePhoenix2Score(this.counts);
     this.container.innerHTML = `
-      <div class="arcade-outcome-card is-clear">
-        <div class="results-top">
-          <div>
-            <p class="muted-text" style="margin:0;">STAGE CLEAR · ${this.selectedSong.title}</p>
-            <h2 class="results-score">${res.score.toLocaleString()}</h2>
-            <p class="muted-text" style="margin:0;">PIU Phoenix 2 Scale: <strong>${res.scoreThousand} / 1000</strong> · ${res.plate}</p>
+      <div class="arcade-outcome-card is-clear taiko-results-card">
+        <div class="taiko-results-hero">
+          <img src="/not-the-ocarina-playing-simulator/assets/results-victory-art.jpg" alt="Stage Clear Celebration" class="results-hero-img" />
+          <div class="results-hero-scrim"></div>
+          <div class="results-top">
+            <div>
+              <p class="muted-text" style="margin:0;color:#fde68a;">STAGE CLEAR · ${this.selectedSong.title}</p>
+              <h2 class="results-score">${res.score.toLocaleString()}</h2>
+              <p class="muted-text" style="margin:0;color:#f8fafc;">PIU Phoenix 2 Scale: <strong>${res.scoreThousand} / 1000</strong> · ${res.plate}</p>
+            </div>
+            <div class="results-grade-badge">${res.grade}</div>
           </div>
-          <div class="results-grade-badge">${res.grade}</div>
         </div>
 
         <div class="judgement-grid">

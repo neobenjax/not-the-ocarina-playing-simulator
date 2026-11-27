@@ -13,11 +13,20 @@ export function initPwaInstall(): void {
       .catch(() => {});
   }
 
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    listeners.forEach((fn) => fn());
+  });
+
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e as BeforeInstallPromptEvent;
     listeners.forEach((fn) => fn());
   });
+}
+
+export function canPromptInstall(): boolean {
+  return deferredPrompt !== null;
 }
 
 export function onInstallAvailabilityChange(fn: () => void): () => void {
@@ -37,7 +46,7 @@ export async function triggerPwaInstall(onFallbackMessage: (msg: string) => void
     await deferredPrompt.prompt();
     const choice = await deferredPrompt.userChoice;
     if (choice.outcome === 'accepted') {
-      onFallbackMessage('Installing Not The Ocarina Playing Simulator!');
+      onFallbackMessage('Installing…');
     }
     deferredPrompt = null;
     listeners.forEach((fn) => fn());
@@ -46,7 +55,7 @@ export async function triggerPwaInstall(onFallbackMessage: (msg: string) => void
 
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if (isIos) {
-    onFallbackMessage('On iOS: tap Share (⎋) → "Add to Home Screen" to install!');
+    onFallbackMessage('On iOS: tap Share () → "Add to Home Screen" to install!');
   } else if (isStandaloneMode()) {
     onFallbackMessage('Already running as an installed app!');
   } else {

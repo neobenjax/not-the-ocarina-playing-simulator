@@ -1,5 +1,4 @@
-import 'overlayscrollbars/overlayscrollbars.css';
-import { OverlayScrollbars } from 'overlayscrollbars';
+import { icons } from '../../components/icons';
 import { getBentFrequency, HOLE_MAP, HoleId, PartitureNote, PartitureTrack, PitchBend, Playlist } from '../../types';
 import { SAMPLE_SONGS } from '../../data/sampleSongs';
 import { haptics } from '../../haptics/hapticEngine';
@@ -8,8 +7,15 @@ import { playMelodyChime, playMetronomeTick, playUiClick } from '../../audio/sou
 import { exportTrackToMp3 } from '../../audio/mp3Exporter';
 import { detectSecretMotif, parsePartitureText, serializePartitureText } from './partitureFormat';
 
+
 const LANES_TOP_TO_BOTTOM: HoleId[] = ['hole-up', 'hole-left', 'hole-right', 'hole-down', 'hole-a'];
-const PX_PER_BEAT = 64;
+/** Vertical score: one beat is this many pixels; time runs upward from each hole. */
+const PX_PER_BEAT = 56;
+
+type LanePos = Record<HoleId, { x: number; y: number }>;
+
+/** Columns from left to right on screen (follows the ocarina's staggered holes). */
+const LANES_ORDER_X = (): HoleId[] => ['hole-a', 'hole-up', 'hole-down', 'hole-left', 'hole-right'];
 
 interface ActiveLiveNote {
   note: PartitureNote;
@@ -46,7 +52,13 @@ export class FreePlayComposer {
   private playheadBeat = 0;
   private lastMetronomeBeat = -1;
   private playedNoteIds = new Set<string>();
-  private osInstance: ReturnType<typeof OverlayScrollbars> | null = null;
+  /** Beat sitting on the holes right now; the score scrolls by changing it. */
+  private viewBeat = 0;
+  private lanePos: LanePos | null = null;
+  private laneW = 48;
+  private resizeObs: ResizeObserver | null = null;
+  private recordCursorRaf: number | null = null;
+  private getHoleScreenPositions: () => LanePos | null;
 
   private onPlaylistsChange: (playlists: Playlist[]) => void;
   private onToast: (msg: string) => void;
@@ -63,6 +75,7 @@ export class FreePlayComposer {
       onToast: (msg: string) => void;
       onHighlightHole: (holeId: HoleId, active: boolean) => void;
       onBackToMenu: () => void;
+      getHoleScreenPositions?: () => LanePos | null;
     }
   ) {
     this.container = container;
@@ -78,6 +91,9 @@ export class FreePlayComposer {
     this.onToast = callbacks.onToast;
     this.onHighlightHole = callbacks.onHighlightHole;
     this.onBackToMenu = callbacks.onBackToMenu;
+    this.getHoleScreenPositions = callbacks.getHoleScreenPositions ?? (() => null);
+    this.resizeObs = new ResizeObserver(() => this.renderTimelineOnly());
+    this.resizeObs.observe(this.container);
 
     this.clearDialog = document.createElement('dialog');
     this.clearDialog.className = 'game-dialog';
@@ -85,14 +101,14 @@ export class FreePlayComposer {
     this.clearDialog.innerHTML = `
       <div class="dialog-header">
         <h2>Clear Track?</h2>
-        <button type="button" class="icon-btn" id="clear-dialog-close" aria-label="Close">✕</button>
+        <button type="button" class="icon-btn" id="clear-dialog-close" aria-label="Close"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       </div>
       <div class="dialog-body">
         <p>This will remove all notes from <strong>the current partiture</strong>. Are you sure?</p>
       </div>
       <div class="dialog-footer">
         <button type="button" class="btn btn-secondary" id="clear-dialog-cancel">Cancel</button>
-        <button type="button" class="btn btn-danger" id="clear-dialog-confirm">🧹 Clear All Notes</button>
+        <button type="button" class="btn btn-danger" id="clear-dialog-confirm">Clear All Notes</button>
       </div>
     `;
     document.body.appendChild(this.clearDialog);
@@ -111,8 +127,8 @@ export class FreePlayComposer {
     this.stopLiveHoldLoop();
     this.isRecording = false;
     this.activeLiveNotes.clear();
-    this.osInstance?.destroy();
-    this.osInstance = null;
+    this.resizeObs?.disconnect();
+    this.stopRecordCursor();
     this.clearDialog.remove();
   }
 
@@ -141,6 +157,7 @@ export class FreePlayComposer {
       this.stopPlayback();
       this.isRecording = true;
       this.recordStartMs = performance.now();
+      this.startRecordCursor();
       this.onToast('● Recording live! Play the Ocarina.');
     }
     this.render();
@@ -180,9 +197,6 @@ export class FreePlayComposer {
   }
 
   private getScrollViewport(): HTMLElement | null {
-    if (this.osInstance) {
-      return this.osInstance.elements().viewport;
-    }
     return this.container.querySelector<HTMLElement>('#partiture-scroll');
   }
 
@@ -195,7 +209,7 @@ export class FreePlayComposer {
       this.recentMotifHoles = [];
       playMelodyChime();
       haptics.melodyDiscovered();
-      this.onToast(`✨ Melody Discovered: ${detected}!`);
+      this.onToast(`Melody Discovered: ${detected}!`);
     }
 
     if (this.autoBpm && (this.isRecording || this.ocarinaToPartiture) && !this.isPlaying) {
@@ -300,9 +314,7 @@ export class FreePlayComposer {
         const noteEl = this.container.querySelector<HTMLElement>(
           `.partiture-note[data-note-id="${entry.note.id}"]`
         );
-        if (noteEl) {
-          noteEl.style.width = `${Math.max(18, heldBeats * PX_PER_BEAT)}px`;
-        }
+        if (noteEl) this.placeNoteEl(noteEl, entry.note);
       }
       this.liveHoldRaf = requestAnimationFrame(tick);
     };
@@ -323,20 +335,76 @@ export class FreePlayComposer {
     if (hudBpm) hudBpm.textContent = `${this.currentTrack.bpm} BPM`;
   }
 
-  private ensureBeatVisibleSmooth(beat: number, instant = false): void {
-    const viewport = this.getScrollViewport();
-    if (!viewport) return;
-    const targetX = 84 + beat * PX_PER_BEAT;
-    const viewW = viewport.clientWidth;
-    const currentLeft = viewport.scrollLeft;
+  /** Keep a beat on screen: the score slides so the writing point stays in the upper part. */
+  private ensureBeatVisibleSmooth(beat: number, _instant = false): void {
+    const visible = this.visibleBeats();
+    if (beat - this.viewBeat > visible * 0.8) this.setViewBeat(beat - visible * 0.5);
+    else if (beat < this.viewBeat) this.setViewBeat(Math.max(0, beat - 1));
+  }
 
-    if (targetX > currentLeft + viewW - 72) {
-      const nextLeft = Math.max(0, targetX - viewW + 120);
-      viewport.scrollTo({ left: nextLeft, behavior: instant ? 'auto' : 'smooth' });
-    } else if (targetX < currentLeft + 84 && currentLeft > 0) {
-      const nextLeft = Math.max(0, targetX - 110);
-      viewport.scrollTo({ left: nextLeft, behavior: instant ? 'auto' : 'smooth' });
+  private visibleBeats(): number {
+    if (!this.lanePos) return 8;
+    const ys = Object.values(this.lanePos).map((p) => p.y);
+    return Math.max(4, (Math.min(...ys) - 64) / PX_PER_BEAT);
+  }
+
+  private setViewBeat(beat: number): void {
+    this.viewBeat = Math.max(0, beat);
+    const shift = `translateY(${(this.viewBeat * PX_PER_BEAT).toFixed(1)}px)`;
+    this.container.querySelectorAll<HTMLElement>('.lane-track, .score-beats-track').forEach((el) => {
+      el.style.transform = shift;
+    });
+    this.placeCursor();
+  }
+
+  /** The recording cursor: where new notes are being written. */
+  private placeCursor(): void {
+    const cursor = this.container.querySelector<HTMLElement>('#score-cursor');
+    if (!cursor || !this.lanePos) return;
+    if (!this.isRecording) {
+      cursor.hidden = true;
+      return;
     }
+    const secPerBeat = 60 / Math.max(40, this.currentTrack.bpm);
+    const beat = (performance.now() - this.recordStartMs) / 1000 / secPerBeat;
+    const base = this.baseline();
+    cursor.hidden = false;
+    cursor.style.transform = `translateY(${(base - (beat - this.viewBeat) * PX_PER_BEAT).toFixed(1)}px)`;
+  }
+
+  private startRecordCursor(): void {
+    const tick = () => {
+      if (!this.isRecording) {
+        this.recordCursorRaf = null;
+        this.placeCursor();
+        return;
+      }
+      const secPerBeat = 60 / Math.max(40, this.currentTrack.bpm);
+      this.ensureBeatVisibleSmooth((performance.now() - this.recordStartMs) / 1000 / secPerBeat);
+      this.placeCursor();
+      this.recordCursorRaf = requestAnimationFrame(tick);
+    };
+    if (this.recordCursorRaf === null) this.recordCursorRaf = requestAnimationFrame(tick);
+  }
+
+  private stopRecordCursor(): void {
+    if (this.recordCursorRaf !== null) cancelAnimationFrame(this.recordCursorRaf);
+    this.recordCursorRaf = null;
+  }
+
+  private baseline(): number {
+    if (!this.lanePos) return 300;
+    const ys = Object.values(this.lanePos).map((p) => p.y);
+    return ys.reduce((a, b) => a + b, 0) / ys.length;
+  }
+
+  /** Note box inside its lane track: bottom at its start beat, growing upward with its length. */
+  private placeNoteEl(el: HTMLElement, n: PartitureNote): void {
+    const lane = this.lanePos?.[n.holeId];
+    if (!lane) return;
+    const h = Math.max(this.laneW * 0.55, n.durationBeats * PX_PER_BEAT);
+    el.style.top = `${(lane.y - n.startBeat * PX_PER_BEAT - h).toFixed(1)}px`;
+    el.style.height = `${h.toFixed(1)}px`;
   }
 
   private snap(beats: number): number {
@@ -358,11 +426,12 @@ export class FreePlayComposer {
     this.container.innerHTML = `
       <div class="composer-top-clean">
         <div class="composer-minimal-bar">
-          <button type="button" class="btn btn-secondary" id="btn-back-title">← Menu</button>
+          <button type="button" class="comp-bar-btn" id="btn-back-title">${icons.back}<span>Menu</span></button>
           <div class="composer-minimal-info">
             <strong id="comp-hud-title">${this.escapeHtml(this.currentTrack.title)}</strong>
             <span class="hud-bpm-pill" id="comp-hud-bpm">${this.currentTrack.bpm} BPM</span>
           </div>
+          <button type="button" class="comp-bar-btn" id="btn-songbook" aria-expanded="${this.dockLeft.classList.contains('is-open')}" aria-controls="composer-dock-left">${icons.songbook}<span>Songbook</span></button>
         </div>
         <div class="partiture-timeline-scroll" id="partiture-scroll">
           <div class="partiture-timeline" id="partiture-timeline"></div>
@@ -371,243 +440,277 @@ export class FreePlayComposer {
     `;
 
     this.dockLeft.innerHTML = `
-      <div class="dock-card">
-        <select id="comp-sample-select" class="text-input dock-input" aria-label="Load Sample Partiture">
-          <option value="">🎼 Sample...</option>
-          ${SAMPLE_SONGS.map(
-            (s) => `<option value="sample:${s.id}" ${this.currentTrack.id === s.id ? 'selected' : ''}>${this.escapeHtml(s.title)}</option>`
-          ).join('')}
-        </select>
+      <div class="songbook">
+        <header class="songbook-head">
+          <h2>Songbook</h2>
+          <button type="button" class="icon-btn" id="btn-songbook-close" aria-label="Close songbook">${icons.close}</button>
+        </header>
 
-        <input type="text" id="comp-track-title" class="text-input dock-input" value="${this.escapeHtml(this.currentTrack.title)}" aria-label="Track Title" />
-
-        <div class="dock-row">
-          <label class="bpm-pill dock-pill">
-            <span>BPM</span>
-            <input type="number" id="comp-bpm" min="40" max="220" value="${this.currentTrack.bpm}" />
+        <section class="songbook-section">
+          <h3>This song</h3>
+          <label class="field">
+            <span>Name</span>
+            <input type="text" id="comp-track-title" class="text-input dock-input" value="${this.escapeHtml(this.currentTrack.title)}" />
           </label>
-          <button type="button" class="btn ${this.autoBpm ? 'is-on' : 'btn-secondary'} dock-btn" id="btn-comp-auto-bpm" title="Auto-calculate BPM from Ocarina rhythm">
-            ⚡ Auto
-          </button>
-          <label class="bpm-pill dock-pill">
-            <span>Snap</span>
-            <select id="comp-snap">
-              <option value="0.25" ${this.snapBeats === 0.25 ? 'selected' : ''}>1/4</option>
-              <option value="0.5" ${this.snapBeats === 0.5 ? 'selected' : ''}>1/2</option>
-              <option value="1" ${this.snapBeats === 1 ? 'selected' : ''}>1</option>
-              <option value="0" ${this.snapBeats === 0 ? 'selected' : ''}>Free</option>
+          <div class="field-row">
+            <label class="field">
+              <span>Tempo</span>
+              <span class="field-inline"><input type="number" id="comp-bpm" min="40" max="220" value="${this.currentTrack.bpm}" /> BPM</span>
+            </label>
+            <label class="field">
+              <span>Snap notes to</span>
+              <select id="comp-snap">
+                <option value="0.25" ${this.snapBeats === 0.25 ? 'selected' : ''}>Quarter beat</option>
+                <option value="0.5" ${this.snapBeats === 0.5 ? 'selected' : ''}>Half beat</option>
+                <option value="1" ${this.snapBeats === 1 ? 'selected' : ''}>Whole beat</option>
+                <option value="0" ${this.snapBeats === 0 ? 'selected' : ''}>Free</option>
+              </select>
+            </label>
+          </div>
+          <label class="toggle-row compact">
+            <span><strong>Follow my tempo</strong><span class="muted-text">Set the BPM from how you play.</span></span>
+            <input type="checkbox" class="switch" id="btn-comp-auto-bpm" ${this.autoBpm ? 'checked' : ''} />
+          </label>
+        </section>
+
+        <section class="songbook-section">
+          <h3>Collection</h3>
+          <div class="field-row">
+            <select id="comp-playlist-select" class="text-input dock-input" aria-label="Collection">
+              ${this.playlists.map((pl) => `<option value="${pl.id}" ${pl.id === activePl?.id ? 'selected' : ''}>${this.escapeHtml(pl.name)} (${pl.tracks.length})</option>`).join('')}
             </select>
-          </label>
-        </div>
+            <button type="button" class="btn btn-secondary" id="btn-pl-new" title="New collection" aria-label="New collection">+</button>
+          </div>
+          <button type="button" class="btn btn-gold" id="btn-comp-save">${icons.save}Save to collection</button>
+        </section>
 
-        <div class="dock-row">
-          <select id="comp-playlist-select" class="text-input dock-input" aria-label="Select Playlist">
-            ${this.playlists.map((pl) => `<option value="${pl.id}" ${pl.id === activePl?.id ? 'selected' : ''}>📁 ${this.escapeHtml(pl.name)} (${pl.tracks.length})</option>`).join('')}
+        <section class="songbook-section">
+          <h3>Start from a tune</h3>
+          <select id="comp-sample-select" class="text-input dock-input" aria-label="Start from a tune">
+            <option value="">Choose a tune…</option>
+            ${SAMPLE_SONGS.map(
+              (s) => `<option value="sample:${s.id}" ${this.currentTrack.id === s.id ? 'selected' : ''}>${this.escapeHtml(s.title)}</option>`
+            ).join('')}
           </select>
-          <button type="button" class="btn btn-secondary dock-btn" id="btn-pl-new" title="New Playlist">+</button>
-          <button type="button" class="btn btn-gold dock-btn" id="btn-comp-save" title="Save Track">💾 Save</button>
-        </div>
+        </section>
 
-        <div class="dock-row">
-          <button type="button" class="btn btn-primary dock-btn" id="btn-export-mp3">🎧 MP3</button>
-          <button type="button" class="btn btn-outline dock-btn" id="btn-export-txt">📄 .txt</button>
-          <label class="btn btn-secondary dock-btn file-btn">
-            📥 Load
+        <section class="songbook-section">
+          <h3>Files</h3>
+          <div class="field-row">
+            <button type="button" class="btn btn-secondary" id="btn-export-mp3">${icons.install}Audio (MP3)</button>
+            <button type="button" class="btn btn-secondary" id="btn-export-txt">${icons.install}Notes (.txt)</button>
+          </div>
+          <label class="btn btn-secondary file-btn">
+            ${icons.upload}Open notes file
             <input type="file" id="input-import-txt" accept=".txt,text/plain" hidden />
           </label>
-        </div>
+        </section>
       </div>
     `;
 
     this.dockRight.innerHTML = `
-      <div class="dock-card">
-        <button type="button" class="btn ${this.ocarinaToPartiture ? 'is-on' : 'btn-secondary'} dock-btn" id="btn-comp-step-input" title="Add notes to partiture as you play">
-          ✍️ Input ${this.ocarinaToPartiture ? 'On' : 'Off'}
-        </button>
-        <button type="button" class="btn ${this.isRecording ? 'btn-danger is-recording' : 'btn-outline'} dock-btn" id="btn-comp-rec">
-          ${this.isRecording ? '⏹ Stop Rec' : '● Record'}
-        </button>
-        <div class="dock-row">
-          <button type="button" class="btn btn-primary dock-btn" id="btn-comp-play">
-            ${this.isPlaying ? '⏸ Pause' : '▶ Play'}
-          </button>
-          <button type="button" class="btn btn-secondary dock-btn" id="btn-comp-stop">⏹ Stop</button>
-        </div>
-        <div class="dock-row">
-          <button type="button" class="btn btn-secondary ${this.useMetronome ? 'is-on' : ''} dock-btn" id="btn-comp-metro">🥁 Metro</button>
-          <button type="button" class="btn btn-secondary dock-btn" id="btn-comp-del-note" ${this.selectedNoteIds.size > 0 ? '' : 'disabled'}>🗑️ Del</button>
-          <button type="button" class="btn btn-secondary dock-btn" id="btn-comp-clear">🧹 Clear</button>
-        </div>
+      <div class="transport" role="toolbar" aria-label="Recording">
+        <button type="button" class="transport-tool ${this.ocarinaToPartiture ? 'is-on' : ''}" id="btn-comp-step-input" aria-pressed="${this.ocarinaToPartiture}" title="Write notes as you play">${icons.quill}<span>Write</span></button>
+        <button type="button" class="transport-tool ${this.useMetronome ? 'is-on' : ''}" id="btn-comp-metro" aria-pressed="${this.useMetronome}" title="Metronome">${icons.metronome}<span>Beat</span></button>
+        <span class="transport-sep"></span>
+        <button type="button" class="transport-main is-rec ${this.isRecording ? 'is-recording' : ''}" id="btn-comp-rec" aria-pressed="${this.isRecording}" title="Record">${icons.record}<span>${this.isRecording ? 'Recording' : 'Record'}</span></button>
+        <button type="button" class="transport-main" id="btn-comp-play">${this.playLabel()}</button>
+        <button type="button" class="transport-main" id="btn-comp-stop" title="Stop">${icons.stop}<span>Stop</span></button>
+        <span class="transport-sep"></span>
+        <button type="button" class="transport-tool" id="btn-comp-del-note" ${this.selectedNoteIds.size > 0 ? '' : 'disabled'} title="Delete selected notes">${icons.trash}<span>Delete</span></button>
+        <button type="button" class="transport-tool" id="btn-comp-clear" title="Clear all notes">${icons.eraser}<span>Clear</span></button>
       </div>
     `;
+
+    this.dockLeft.querySelector('#btn-songbook-close')?.addEventListener('click', () => this.setSongbookOpen(false));
+    this.container.querySelector('#btn-songbook')?.addEventListener('click', () => this.setSongbookOpen(!this.dockLeft.classList.contains('is-open')));
 
     this.initScrollbar();
     this.renderTimelineOnly();
     this.bindEvents();
   }
 
+  private playLabel(): string {
+    return this.isPlaying ? `${icons.pause}<span>Pause</span>` : `${icons.play}<span>Play</span>`;
+  }
+
+  private setSongbookOpen(open: boolean): void {
+    this.dockLeft.classList.toggle('is-open', open);
+    this.container.querySelector('#btn-songbook')?.setAttribute('aria-expanded', String(open));
+    if (open) this.dockLeft.querySelector<HTMLElement>('input, select, button')?.focus();
+  }
+
   private initScrollbar(): void {
-    this.osInstance?.destroy();
-    this.osInstance = null;
-    const scrollEl = this.container.querySelector<HTMLElement>('#partiture-scroll');
-    if (scrollEl) {
-      this.osInstance = OverlayScrollbars(scrollEl, {
-        overflow: { x: 'scroll', y: 'hidden' },
-        scrollbars: {
-          theme: 'os-theme-light',
-          autoHide: 'never',
-          clickScroll: true,
-        },
-      });
-    }
+    // the vertical score scrolls itself (wheel / touch drag), no scrollbar needed
   }
 
   private renderTimelineOnly(): void {
     const timeline = this.container.querySelector<HTMLElement>('#partiture-timeline');
-    if (!timeline) return;
+    const scoreEl = this.getScrollViewport();
+    if (!timeline || !scoreEl) return;
 
-    const viewport = this.getScrollViewport();
-    const prevScrollLeft = viewport ? viewport.scrollLeft : 0;
+    // Columns sit straight above the ocarina's holes.
+    const rect = scoreEl.getBoundingClientRect();
+    const screen = this.getHoleScreenPositions();
+    const pos = {} as LanePos;
+    LANES_TOP_TO_BOTTOM.forEach((id, i) => {
+      pos[id] = screen
+        ? { x: screen[id].x - rect.left, y: screen[id].y - rect.top }
+        : { x: rect.width * (0.3 + i * 0.1), y: rect.height * 0.7 };
+    });
+    this.lanePos = pos;
+    const xs = Object.values(pos).map((p) => p.x).sort((a, b) => a - b);
+    const gap = xs.length > 1 ? (xs[xs.length - 1] - xs[0]) / (xs.length - 1) : 60;
+    this.laneW = Math.max(30, Math.min(64, gap * 0.82));
+    const base = this.baseline();
+    const left = xs[0] - this.laneW;
+    const width = xs[xs.length - 1] - xs[0] + this.laneW * 2;
 
-    const totalBeats = this.getTotalBeats();
-    const widthPx = totalBeats * PX_PER_BEAT;
-
-    const rulerTicks = Array.from({ length: totalBeats + 1 }, (_, b) => {
+    const totalBeats = this.getTotalBeats() + Math.ceil(this.visibleBeats()) + 4;
+    const beatLines = Array.from({ length: totalBeats + 1 }, (_, b) => {
       const isBar = b % 4 === 0;
-      return `<div class="beat-tick ${isBar ? 'is-bar' : ''}" style="left:${b * PX_PER_BEAT}px">${isBar ? `Bar ${b / 4 + 1}` : ''}</div>`;
+      return `<div class="score-beat ${isBar ? 'is-bar' : ''}" style="top:${(base - b * PX_PER_BEAT).toFixed(1)}px">${isBar ? `<span>${b / 4 + 1}</span>` : ''}</div>`;
     }).join('');
 
     const lanesHtml = LANES_TOP_TO_BOTTOM.map((holeId) => {
       const meta = HOLE_MAP[holeId];
-      const laneNotes = this.currentTrack.notes.filter((n) => n.holeId === holeId);
+      const p = pos[holeId];
+      const notes = this.currentTrack.notes
+        .filter((n) => n.holeId === holeId)
+        .map((n) => {
+          const selected = this.selectedNoteIds.has(n.id);
+          const bend = n.pitchBend ?? 'normal';
+          const bendCls = bend === 'up' ? 'is-bend-up' : bend === 'down' ? 'is-bend-down' : '';
+          return `
+            <div class="partiture-note ${selected ? 'is-selected' : ''} ${bendCls}" data-note-id="${n.id}">
+              <span class="note-resize-handle" data-resize-note="${n.id}" title="Drag to change length"></span>
+              <span class="note-pill-text">${meta.noteName.replace(/\d/, '')}${bend === 'up' ? '↑' : bend === 'down' ? '↓' : ''}</span>
+            </div>`;
+        })
+        .join('');
       return `
-        <div class="partiture-lane" data-lane-hole="${holeId}" style="width:${widthPx}px">
-          <div class="lane-header" style="border-left: 4px solid ${meta.color}">
-            <strong>${meta.ootButton}</strong>
-            <span>${meta.noteName}</span>
-          </div>
-          <div class="lane-grid" data-grid-hole="${holeId}">
-            ${laneNotes
-              .map((n) => {
-                const left = n.startBeat * PX_PER_BEAT;
-                const width = Math.max(18, n.durationBeats * PX_PER_BEAT);
-                const selected = this.selectedNoteIds.has(n.id);
-                const bend = n.pitchBend ?? 'normal';
-                const bendCls = bend === 'up' ? 'is-bend-up' : bend === 'down' ? 'is-bend-down' : '';
-                const bendBadge = bend === 'up' ? '↑' : bend === 'down' ? '↓' : '';
-                return `
-                  <div class="partiture-note ${selected ? 'is-selected' : ''} ${bendCls}"
-                       data-note-id="${n.id}"
-                       style="left:${left}px;width:${width}px;background:${meta.color};">
-                    <span class="note-pill-text">${meta.ootButton}${bendBadge}</span>
-                    <span class="note-resize-handle" data-resize-note="${n.id}" title="Drag to resize"></span>
-                  </div>
-                `;
-              })
-              .join('')}
-          </div>
-        </div>
-      `;
+        <div class="lane-grid" data-grid-hole="${holeId}"
+             style="--lane:${meta.color};left:${(p.x - this.laneW / 2).toFixed(1)}px;width:${this.laneW.toFixed(1)}px;height:${p.y.toFixed(1)}px">
+          <div class="lane-track">${notes}</div>
+        </div>`;
     }).join('');
 
-    timeline.style.width = `${widthPx + 84}px`;
     timeline.innerHTML = `
-      <div class="partiture-ruler" style="width:${widthPx}px">${rulerTicks}</div>
-      <div class="partiture-lanes-wrap">
-        ${lanesHtml}
-        <div class="selection-marquee" id="selection-marquee"></div>
-        <div class="partiture-playhead" id="partiture-playhead" style="left:${84 + this.playheadBeat * PX_PER_BEAT}px"></div>
+      <div class="score-beats" style="left:${left.toFixed(1)}px;width:${width.toFixed(1)}px;height:${(base + 1).toFixed(1)}px">
+        <div class="score-beats-track">${beatLines}</div>
       </div>
+      ${lanesHtml}
+      <div class="score-cursor" id="score-cursor" hidden style="left:${left.toFixed(1)}px;width:${width.toFixed(1)}px"></div>
+      <div class="selection-marquee" id="selection-marquee"></div>
     `;
 
-    if (viewport) {
-      viewport.scrollLeft = prevScrollLeft;
-    }
-
+    timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((el) => {
+      const n = this.currentTrack.notes.find((x) => x.id === el.dataset.noteId);
+      if (n) this.placeNoteEl(el, n);
+    });
+    this.setViewBeat(this.viewBeat);
     this.bindTimelineInteractions();
+  }
+
+  private beatAt(grid: HTMLElement, clientY: number): number {
+    const r = grid.getBoundingClientRect();
+    return (r.height - (clientY - r.top)) / PX_PER_BEAT + this.viewBeat;
+  }
+
+  private laneNearest(clientX: number): HoleId {
+    const scoreRect = this.getScrollViewport()!.getBoundingClientRect();
+    let best: HoleId = LANES_TOP_TO_BOTTOM[0];
+    let bestD = Infinity;
+    for (const id of LANES_TOP_TO_BOTTOM) {
+      const d = Math.abs(this.lanePos![id].x + scoreRect.left - clientX);
+      if (d < bestD) {
+        bestD = d;
+        best = id;
+      }
+    }
+    return best;
   }
 
   private bindTimelineInteractions(): void {
     const timeline = this.container.querySelector<HTMLElement>('#partiture-timeline');
-    const lanesWrap = this.container.querySelector<HTMLElement>('.partiture-lanes-wrap');
+    const scoreEl = this.getScrollViewport();
     const marquee = this.container.querySelector<HTMLElement>('#selection-marquee');
-    if (!timeline || !lanesWrap) return;
+    if (!timeline || !scoreEl) return;
 
-    // Empty grid: short click inserts a note; drag (>6px) draws a marquee selection box!
+    // scroll the score: wheel, or drag with a finger
+    if (!scoreEl.dataset.wheelBound) {
+      scoreEl.dataset.wheelBound = '1';
+      scoreEl.addEventListener(
+        'wheel',
+        (e) => {
+          if (this.isPlaying) return;
+          e.preventDefault();
+          this.setViewBeat(this.viewBeat + e.deltaY / PX_PER_BEAT);
+        },
+        { passive: false }
+      );
+    }
+
+    // Empty column: tap adds a note; drag draws a selection box (mouse) or scrolls (touch)
     timeline.querySelectorAll<HTMLElement>('.lane-grid').forEach((grid) => {
       grid.addEventListener('pointerdown', (e) => {
         if ((e.target as HTMLElement).closest('.partiture-note')) return;
         const startClientX = e.clientX;
         const startClientY = e.clientY;
-        const wrapRect = lanesWrap.getBoundingClientRect();
-        let isDraggingMarquee = false;
+        const startView = this.viewBeat;
+        const isTouch = e.pointerType === 'touch';
+        const scoreRect = scoreEl.getBoundingClientRect();
+        let dragged = false;
 
         const onMove = (me: PointerEvent) => {
-          const dist = Math.hypot(me.clientX - startClientX, me.clientY - startClientY);
-          if (dist > 6) {
-            isDraggingMarquee = true;
-            if (marquee) {
-              const x1 = Math.min(startClientX, me.clientX) - wrapRect.left;
-              const y1 = Math.min(startClientY, me.clientY) - wrapRect.top;
-              const x2 = Math.max(startClientX, me.clientX) - wrapRect.left;
-              const y2 = Math.max(startClientY, me.clientY) - wrapRect.top;
-              marquee.style.display = 'block';
-              marquee.style.left = `${x1}px`;
-              marquee.style.top = `${y1}px`;
-              marquee.style.width = `${x2 - x1}px`;
-              marquee.style.height = `${y2 - y1}px`;
-
-              const selRect = {
-                left: Math.min(startClientX, me.clientX),
-                right: Math.max(startClientX, me.clientX),
-                top: Math.min(startClientY, me.clientY),
-                bottom: Math.max(startClientY, me.clientY),
-              };
-              const nextSel = new Set<string>();
-              timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((nEl) => {
-                const nr = nEl.getBoundingClientRect();
-                const intersects = !(
-                  nr.right < selRect.left ||
-                  nr.left > selRect.right ||
-                  nr.bottom < selRect.top ||
-                  nr.top > selRect.bottom
-                );
-                if (intersects && nEl.dataset.noteId) {
-                  nextSel.add(nEl.dataset.noteId);
-                }
-                nEl.classList.toggle('is-selected', intersects);
-              });
-              this.selectedNoteIds = nextSel;
-              this.updateDeleteButtonState();
-            }
+          if (Math.hypot(me.clientX - startClientX, me.clientY - startClientY) <= 6) return;
+          dragged = true;
+          if (isTouch) {
+            if (!this.isPlaying) this.setViewBeat(startView + (me.clientY - startClientY) / PX_PER_BEAT);
+            return;
           }
+          if (!marquee) return;
+          const x1 = Math.min(startClientX, me.clientX);
+          const y1 = Math.min(startClientY, me.clientY);
+          const x2 = Math.max(startClientX, me.clientX);
+          const y2 = Math.max(startClientY, me.clientY);
+          marquee.style.display = 'block';
+          marquee.style.left = `${x1 - scoreRect.left}px`;
+          marquee.style.top = `${y1 - scoreRect.top}px`;
+          marquee.style.width = `${x2 - x1}px`;
+          marquee.style.height = `${y2 - y1}px`;
+          const nextSel = new Set<string>();
+          timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((nEl) => {
+            const nr = nEl.getBoundingClientRect();
+            const hit = !(nr.right < x1 || nr.left > x2 || nr.bottom < y1 || nr.top > y2);
+            if (hit && nEl.dataset.noteId) nextSel.add(nEl.dataset.noteId);
+            nEl.classList.toggle('is-selected', hit);
+          });
+          this.selectedNoteIds = nextSel;
+          this.updateDeleteButtonState();
         };
 
         const onUp = () => {
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onUp);
           if (marquee) marquee.style.display = 'none';
-
-          if (!isDraggingMarquee) {
-            const rect = grid.getBoundingClientRect();
-            const x = Math.max(0, startClientX - rect.left);
-            const rawBeat = x / PX_PER_BEAT;
-            const startBeat = Math.max(0, this.snap(rawBeat));
-            const holeId = grid.dataset.gridHole as HoleId;
-            const note: PartitureNote = {
-              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              holeId,
-              startBeat,
-              durationBeats: Math.max(0.5, this.snapBeats || 0.5),
-              pitchBend: 'normal',
-            };
-            this.currentTrack.notes.push(note);
-            this.selectedNoteIds = new Set([note.id]);
-            ocarinaSynth.playOneShot(getBentFrequency(holeId, 'normal'), 0.25, 0.7);
-            haptics.pressHole();
-            this.renderTimelineOnly();
-            this.updateDeleteButtonState();
-          }
+          if (dragged) return;
+          const holeId = grid.dataset.gridHole as HoleId;
+          const note: PartitureNote = {
+            id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            holeId,
+            startBeat: Math.max(0, this.snap(this.beatAt(grid, startClientY))),
+            durationBeats: Math.max(0.5, this.snapBeats || 0.5),
+            pitchBend: 'normal',
+          };
+          this.currentTrack.notes.push(note);
+          this.selectedNoteIds = new Set([note.id]);
+          ocarinaSynth.playOneShot(getBentFrequency(holeId, 'normal'), 0.25, 0.7);
+          this.onHighlightHole(holeId, true);
+          window.setTimeout(() => this.onHighlightHole(holeId, false), 180);
+          haptics.pressHole();
+          this.renderTimelineOnly();
+          this.updateDeleteButtonState();
         };
 
         window.addEventListener('pointermove', onMove);
@@ -615,68 +718,55 @@ export class FreePlayComposer {
       });
     });
 
-    // Note click (Ctrl+Click toggles multi-select; regular click selects; drag moves/resizes all selected)
+    // Notes: Ctrl/Cmd+click toggles selection; drag moves (across columns too); the top grip changes length
     timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((el) => {
       const noteId = el.dataset.noteId!;
-      const note = this.currentTrack.notes.find((n) => n.id === noteId);
-      if (!note) return;
-
       el.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-
-        if (e.ctrlKey || e.metaKey) {
-          if (this.selectedNoteIds.has(noteId)) {
-            this.selectedNoteIds.delete(noteId);
-          } else {
-            this.selectedNoteIds.add(noteId);
-          }
+        const syncSel = () => {
           this.updateDeleteButtonState();
           timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((nEl) => {
             nEl.classList.toggle('is-selected', this.selectedNoteIds.has(nEl.dataset.noteId || ''));
           });
+        };
+        if (e.ctrlKey || e.metaKey) {
+          if (this.selectedNoteIds.has(noteId)) this.selectedNoteIds.delete(noteId);
+          else this.selectedNoteIds.add(noteId);
+          syncSel();
           return;
         }
-
         if (!this.selectedNoteIds.has(noteId)) {
           this.selectedNoteIds = new Set([noteId]);
-          this.updateDeleteButtonState();
-          timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((nEl) => {
-            nEl.classList.toggle('is-selected', this.selectedNoteIds.has(nEl.dataset.noteId || ''));
-          });
+          syncSel();
         }
 
         const isResize = (e.target as HTMLElement).classList.contains('note-resize-handle');
-        const startX = e.clientX;
         const startY = e.clientY;
+        const startLane = this.laneNearest(e.clientX);
         const targets = this.currentTrack.notes.filter((n) => this.selectedNoteIds.has(n.id));
-        const origState = targets.map((n) => ({
-          note: n,
-          beat: n.startBeat,
-          dur: n.durationBeats,
-          laneIdx: LANES_TOP_TO_BOTTOM.indexOf(n.holeId),
-          el: timeline.querySelector<HTMLElement>(`.partiture-note[data-note-id="${n.id}"]`),
-        }));
+        const orig = targets.map((n) => ({ note: n, beat: n.startBeat, dur: n.durationBeats, laneIdx: LANES_ORDER_X().indexOf(n.holeId) }));
+        let moved = false;
 
         const onMove = (me: PointerEvent) => {
-          const dxBeats = (me.clientX - startX) / PX_PER_BEAT;
-          const dyLanes = Math.round((me.clientY - startY) / 42);
-          for (const item of origState) {
+          const dBeats = (startY - me.clientY) / PX_PER_BEAT;
+          if (Math.abs(me.clientY - startY) > 3) moved = true;
+          const laneShift = LANES_ORDER_X().indexOf(this.laneNearest(me.clientX)) - LANES_ORDER_X().indexOf(startLane);
+          for (const item of orig) {
             if (isResize) {
-              item.note.durationBeats = Math.max(0.25, this.snap(item.dur + dxBeats));
-              if (item.el) item.el.style.width = `${Math.max(18, item.note.durationBeats * PX_PER_BEAT)}px`;
+              item.note.durationBeats = Math.max(0.25, this.snap(item.dur + dBeats));
             } else {
-              item.note.startBeat = Math.max(0, this.snap(item.beat + dxBeats));
-              if (item.el) item.el.style.left = `${item.note.startBeat * PX_PER_BEAT}px`;
-              const nextIdx = Math.max(0, Math.min(LANES_TOP_TO_BOTTOM.length - 1, item.laneIdx + dyLanes));
-              item.note.holeId = LANES_TOP_TO_BOTTOM[nextIdx];
+              item.note.startBeat = Math.max(0, this.snap(item.beat + dBeats));
+              const order = LANES_ORDER_X();
+              item.note.holeId = order[Math.max(0, Math.min(order.length - 1, item.laneIdx + laneShift))];
             }
           }
+          this.renderNotesOnly();
         };
 
         const onUp = () => {
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onUp);
-          this.currentTrack.updatedAt = Date.now();
+          if (moved) this.currentTrack.updatedAt = Date.now();
           this.renderTimelineOnly();
         };
 
@@ -684,6 +774,19 @@ export class FreePlayComposer {
         window.addEventListener('pointerup', onUp);
       });
     });
+  }
+
+  /** Cheap redraw while dragging: move note boxes between columns without rebinding everything. */
+  private renderNotesOnly(): void {
+    const timeline = this.container.querySelector<HTMLElement>('#partiture-timeline');
+    if (!timeline) return;
+    for (const n of this.currentTrack.notes) {
+      const el = timeline.querySelector<HTMLElement>(`.partiture-note[data-note-id="${n.id}"]`);
+      if (!el) continue;
+      const track = timeline.querySelector<HTMLElement>(`.lane-grid[data-grid-hole="${n.holeId}"] .lane-track`);
+      if (track && el.parentElement !== track) track.appendChild(el);
+      this.placeNoteEl(el, n);
+    }
   }
 
   private updateDeleteButtonState(): void {
@@ -709,7 +812,7 @@ export class FreePlayComposer {
       this.selectedNoteIds.clear();
       this.recentOnsetIntervals = [];
       this.lastOnsetPerf = 0;
-      this.onToast(`🎼 Loaded sample: ${sample.title}`);
+      this.onToast(`Loaded sample: ${sample.title}`);
       this.render();
     });
 
@@ -723,7 +826,8 @@ export class FreePlayComposer {
       const val = Math.max(40, Math.min(220, parseInt((e.target as HTMLInputElement).value, 10) || 100));
       this.currentTrack.bpm = val;
       this.autoBpm = false;
-      this.dockLeft.querySelector('#btn-comp-auto-bpm')?.classList.remove('is-on');
+      const autoEl = this.dockLeft.querySelector<HTMLInputElement>('#btn-comp-auto-bpm');
+      if (autoEl) autoEl.checked = false;
       this.syncBpmDisplay();
     });
 
@@ -748,7 +852,7 @@ export class FreePlayComposer {
       haptics.tapButton();
       const btn = e.currentTarget as HTMLButtonElement;
       btn.classList.toggle('is-on', this.ocarinaToPartiture);
-      btn.textContent = `✍️ Input ${this.ocarinaToPartiture ? 'On' : 'Off'}`;
+      btn.setAttribute('aria-pressed', String(this.ocarinaToPartiture));
     });
 
     this.dockRight.querySelector('#btn-comp-rec')?.addEventListener('click', () => this.toggleRecord());
@@ -764,6 +868,7 @@ export class FreePlayComposer {
       playUiClick();
       haptics.tapButton();
       (e.currentTarget as HTMLButtonElement).classList.toggle('is-on', this.useMetronome);
+      (e.currentTarget as HTMLButtonElement).setAttribute('aria-pressed', String(this.useMetronome));
     });
 
     this.dockRight.querySelector('#btn-comp-del-note')?.addEventListener('click', () => this.deleteSelectedNotes());
@@ -822,7 +927,7 @@ export class FreePlayComposer {
         a.click();
         URL.revokeObjectURL(url);
         haptics.victory();
-        this.onToast('🎧 MP3 exported!');
+        this.onToast('MP3 exported!');
       } catch (err) {
         console.error(err);
         this.onToast('MP3 export failed.');
@@ -840,7 +945,7 @@ export class FreePlayComposer {
       a.download = `${this.slugify(this.currentTrack.title)}.ocarina.txt`;
       a.click();
       URL.revokeObjectURL(url);
-      this.onToast('📄 Partiture .txt downloaded!');
+      this.onToast('Partiture .txt downloaded!');
     });
 
     this.dockLeft.querySelector<HTMLInputElement>('#input-import-txt')?.addEventListener('change', async (e) => {
@@ -857,7 +962,7 @@ export class FreePlayComposer {
       this.currentTrack = parsed;
       this.selectedNoteIds.clear();
       haptics.victory();
-      this.onToast(`📥 Loaded "${parsed.title}" (${parsed.notes.length} notes)!`);
+      this.onToast(`Loaded "${parsed.title}" (${parsed.notes.length} notes)!`);
       this.render();
     });
   }
@@ -869,7 +974,7 @@ export class FreePlayComposer {
     this.lastMetronomeBeat = Math.floor(this.playheadBeat) - 1;
 
     const btn = this.dockRight.querySelector('#btn-comp-play');
-    if (btn) btn.textContent = '⏸ Pause';
+    if (btn) btn.innerHTML = this.playLabel();
 
     const maxEndBeat = Math.max(
       4,
@@ -897,12 +1002,8 @@ export class FreePlayComposer {
         }
       }
 
-      const playheadEl = this.container.querySelector<HTMLElement>('#partiture-playhead');
-      if (playheadEl) {
-        playheadEl.style.left = `${84 + this.playheadBeat * PX_PER_BEAT}px`;
-      }
-
-      this.ensureBeatVisibleSmooth(this.playheadBeat, true);
+      // the score slides down so each note lands in its hole as it sounds
+      this.setViewBeat(this.playheadBeat);
 
       if (this.playheadBeat >= maxEndBeat) {
         this.stopPlayback();
@@ -919,7 +1020,7 @@ export class FreePlayComposer {
     if (this.playTimer !== null) cancelAnimationFrame(this.playTimer);
     this.playTimer = null;
     const btn = this.dockRight.querySelector('#btn-comp-play');
-    if (btn) btn.textContent = '▶ Play';
+    if (btn) btn.innerHTML = this.playLabel();
   }
 
   private stopPlayback(): void {
@@ -927,10 +1028,7 @@ export class FreePlayComposer {
     this.playheadBeat = 0;
     this.playedNoteIds.clear();
     this.lastMetronomeBeat = -1;
-    const playheadEl = this.container.querySelector<HTMLElement>('#partiture-playhead');
-    if (playheadEl) playheadEl.style.left = '84px';
-    const viewport = this.getScrollViewport();
-    if (viewport) viewport.scrollTo({ left: 0, behavior: 'smooth' });
+    this.setViewBeat(0);
   }
 
   private slugify(s: string): string {

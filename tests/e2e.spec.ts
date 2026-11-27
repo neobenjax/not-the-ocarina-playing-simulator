@@ -36,7 +36,7 @@ test.describe('Not The Ocarina Playing Simulator — Arcade Overhaul E2E', () =>
 
     // 3. Enter Mode 1 (Composer Screen - Minimalist 50/50 + Floating Side Docks)
     await page.click('#launch-mode-composer');
-    await expect(page.locator('.ocarina-svg')).toBeVisible();
+    await expect(page.locator('.ocarina-3d-canvas')).toBeVisible();
     await expect(page.locator('#btn-skin-gallery')).toHaveCount(0);
     await expect(page.locator('#composer-dock-left')).toBeVisible();
     await expect(page.locator('#composer-dock-right')).toBeVisible();
@@ -111,7 +111,7 @@ test.describe('Not The Ocarina Playing Simulator — Arcade Overhaul E2E', () =>
     await expect(page.locator('#arcade-countdown-overlay')).toHaveClass(/is-active/);
     await expect(page.locator('.ingame-life-wrap')).toBeVisible();
     await expect(page.locator('#arcade-highway-canvas')).toBeVisible();
-    await expect(page.locator('.ocarina-svg')).toBeVisible();
+    await expect(page.locator('.ocarina-3d-canvas')).toBeVisible();
 
     // Wait for 3s countdown to finish and verify Ocarina zooms in
     await page.waitForTimeout(3200);
@@ -160,7 +160,7 @@ test.describe('Not The Ocarina Playing Simulator — Arcade Overhaul E2E', () =>
     expect(selectOverflow).toEqual({ x: false, y: false });
 
     await page.click('#btn-arcade-start');
-    await expect(page.locator('.ocarina-svg')).toBeVisible();
+    await expect(page.locator('.ocarina-3d-canvas')).toBeVisible();
     await expect(page.locator('.hole-key-badge')).toHaveCount(0);
     await expect(page.locator('.blow-kbd')).toHaveCount(0);
 

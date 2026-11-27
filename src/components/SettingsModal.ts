@@ -30,12 +30,12 @@ export class SettingsModal {
     const s = this.settings;
     this.dialog.innerHTML = `
       <div class="dialog-header">
-        <h2 id="settings-title">⚙️ Audio, Rhythm & Haptics</h2>
-        <button type="button" class="icon-btn" id="settings-close-btn" aria-label="Close">✕</button>
+        <h2 id="settings-title">Audio, Rhythm & Haptics</h2>
+        <button type="button" class="icon-btn" id="settings-close-btn" aria-label="Close"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       </div>
       <div class="dialog-body settings-body">
         <div class="setting-group">
-          <h3>🔊 Audio Mix</h3>
+          <h3>Audio Mix</h3>
           <label class="slider-row">
             <span>Master Volume (<strong id="val-master">${Math.round(s.masterVolume * 100)}%</strong>)</span>
             <input type="range" id="set-master-vol" min="0" max="1" step="0.05" value="${s.masterVolume}" />
@@ -55,7 +55,7 @@ export class SettingsModal {
         </div>
 
         <div class="setting-group">
-          <h3>🎯 Rhythm Calibration</h3>
+          <h3>Rhythm Calibration</h3>
           <label class="slider-row">
             <span>Audio/Visual Offset (<strong id="val-offset">${s.offsetMs > 0 ? '+' : ''}${s.offsetMs} ms</strong>)</span>
             <input type="range" id="set-offset" min="-250" max="250" step="5" value="${s.offsetMs}" />
@@ -67,19 +67,19 @@ export class SettingsModal {
         </div>
 
         <div class="setting-group">
-          <h3>📳 Tactile & Interface</h3>
+          <h3>Tactile & Interface</h3>
           <label class="toggle-row">
             <span>Haptic Vibrations (WebHaptics)</span>
-            <input type="checkbox" id="set-haptics" ${s.hapticsEnabled ? 'checked' : ''} />
+            <input type="checkbox" class="switch" id="set-haptics" ${s.hapticsEnabled ? 'checked' : ''} />
           </label>
           <label class="toggle-row">
             <span>Hide Keyboard Badges on Ocarina</span>
-            <input type="checkbox" id="set-hide-badges" ${s.forceHideKeyBadges ? 'checked' : ''} />
+            <input type="checkbox" class="switch" id="set-hide-badges" ${s.forceHideKeyBadges ? 'checked' : ''} />
           </label>
         </div>
       </div>
       <div class="dialog-footer">
-        <button type="button" class="btn btn-primary" id="settings-done-btn">Save & Close</button>
+        <button type="button" class="btn btn-gold" id="settings-done-btn">Save & Close</button>
       </div>
     `;
 

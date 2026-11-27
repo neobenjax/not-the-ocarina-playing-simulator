@@ -141,6 +141,12 @@ export class OcarinaSvgController {
     this.updateNoteReadout();
   }
 
+  /** Marks one hole as the next one to play (tutorial guidance); null clears it. */
+  setHoleHint(holeId: HoleId | null): void {
+    this.container.querySelectorAll('[data-hole].is-hint').forEach((el) => el.classList.remove('is-hint'));
+    if (holeId) this.container.querySelector(`[data-hole="${holeId}"]`)?.classList.add('is-hint');
+  }
+
   setBlowActive(active: boolean): void {
     this.isBlowing = active;
     const blowBtn = this.container.querySelector('#ocarina-blow-btn');
@@ -323,7 +329,7 @@ export class OcarinaSvgController {
 
         <div class="ocarina-blow-dock">
           <button type="button" id="ocarina-blow-btn" class="blow-air-btn" aria-label="Blow Air">
-            <span class="blow-icon">💨</span>
+            <span class="blow-icon"></span>
             <span>BLOW AIR</span>
             ${showBadges ? `<kbd class="blow-kbd">${blowKeyLabel}</kbd>` : ''}
           </button>

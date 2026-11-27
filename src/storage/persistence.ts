@@ -9,7 +9,7 @@ import {
 } from '../types';
 
 const KEYS = {
-  settings: 'ocarina_sim_settings_v1',
+  settings: 'ocarina_sim_settings_v2',
   keyMap: 'ocarina_sim_keymap_v1',
   skinId: 'ocarina_sim_skin_v1',
   customSkins: 'ocarina_sim_custom_skins_v1',

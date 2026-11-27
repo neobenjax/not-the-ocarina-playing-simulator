@@ -1341,9 +1341,10 @@ dialog.game-dialog-wide {
 }
 
 .title-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .title-hero-img {

@@ -1,4 +1,5 @@
 import { HOLE_MAP, HoleId, PartitureNote, PartitureTrack, Playlist } from '../../types';
+import { ZELDA_SONGS } from '../../data/zeldaSongs';
 import { haptics } from '../../haptics/hapticEngine';
 import { ocarinaSynth } from '../../audio/ocarinaSynth';
 import { playMelodyChime, playMetronomeTick, playUiClick } from '../../audio/soundMachineSfx';
@@ -18,6 +19,7 @@ export class FreePlayComposer {
   private isRecording = false;
   private isPlaying = false;
   private useMetronome = true;
+  private ocarinaToPartiture = true;
 
   private recordStartMs = 0;
   private activeRecordingNote: { holeId: HoleId; startMs: number } | null = null;
@@ -48,15 +50,7 @@ export class FreePlayComposer {
     const firstTrack = playlists[0]?.tracks[0];
     this.currentTrack = firstTrack
       ? structuredClone(firstTrack)
-      : {
-          id: `trk-${Date.now()}`,
-          title: 'Untitled Hyrule Melody',
-          artist: 'Hero of Time',
-          bpm: 100,
-          notes: [],
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        };
+      : structuredClone(ZELDA_SONGS[0]);
     this.onPlaylistsChange = callbacks.onPlaylistsChange;
     this.onToast = callbacks.onToast;
     this.onHighlightHole = callbacks.onHighlightHole;
@@ -84,6 +78,28 @@ export class FreePlayComposer {
         this.finalizeRecordingNote(performance.now());
       }
       this.activeRecordingNote = { holeId, startMs: performance.now() };
+      return;
+    }
+
+    // Ocarina-first Live Step Input: hitting notes on the Ocarina inserts them into the partiture!
+    if (this.ocarinaToPartiture && !this.isPlaying) {
+      const stepDur = Math.max(0.25, this.snapBeats || 0.5);
+      const nextBeat = this.currentTrack.notes.reduce(
+        (max, n) => Math.max(max, n.startBeat + n.durationBeats),
+        0
+      );
+      const newNote: PartitureNote = {
+        id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        holeId,
+        startBeat: this.snap(nextBeat),
+        durationBeats: stepDur,
+      };
+      this.currentTrack.notes.push(newNote);
+      this.selectedNoteId = newNote.id;
+      this.currentTrack.updatedAt = Date.now();
+      this.renderTimelineOnly();
+      this.updateDeleteButtonState();
+      this.scrollToBeat(newNote.startBeat + newNote.durationBeats);
     }
   }
 
@@ -113,6 +129,17 @@ export class FreePlayComposer {
     });
     this.currentTrack.updatedAt = Date.now();
     this.renderTimelineOnly();
+    this.scrollToBeat(startBeat + durationBeats);
+  }
+
+  private scrollToBeat(beat: number): void {
+    const scrollEl = this.container.querySelector<HTMLElement>('#partiture-scroll');
+    if (!scrollEl) return;
+    const targetX = 84 + beat * PX_PER_BEAT;
+    const viewW = scrollEl.clientWidth;
+    if (targetX > scrollEl.scrollLeft + viewW * 0.72 || targetX < scrollEl.scrollLeft + 84) {
+      scrollEl.scrollLeft = Math.max(0, targetX - viewW * 0.45);
+    }
   }
 
   private snap(beats: number): number {
@@ -135,7 +162,15 @@ export class FreePlayComposer {
       <div class="composer-shell">
         <div class="composer-top-bar">
           <div class="composer-title-group">
+            <select id="comp-sample-select" class="text-input comp-sample-select" aria-label="Load Sample Partiture">
+              <option value="">🎼 Load Zelda Sample...</option>
+              ${ZELDA_SONGS.map(
+                (s) => `<option value="zelda:${s.id}" ${this.currentTrack.id === s.id ? 'selected' : ''}>🎵 ${this.escapeHtml(s.title)} (${s.bpm} BPM)</option>`
+              ).join('')}
+            </select>
+
             <input type="text" id="comp-track-title" class="text-input comp-title-input" value="${this.escapeHtml(this.currentTrack.title)}" aria-label="Track Title" />
+
             <label class="bpm-pill">
               <span>BPM</span>
               <input type="number" id="comp-bpm" min="40" max="220" value="${this.currentTrack.bpm}" />
@@ -152,6 +187,9 @@ export class FreePlayComposer {
           </div>
 
           <div class="composer-transport">
+            <button type="button" class="btn ${this.ocarinaToPartiture ? 'is-on' : 'btn-secondary'}" id="btn-comp-step-input" title="Add notes to partiture as you play the Ocarina">
+              ✍️ Ocarina Input ${this.ocarinaToPartiture ? 'On' : 'Off'}
+            </button>
             <button type="button" class="btn ${this.isRecording ? 'btn-danger is-recording' : 'btn-outline'}" id="btn-comp-rec">
               ${this.isRecording ? '⏹ Stop Rec' : '● Record'}
             </button>
@@ -160,7 +198,7 @@ export class FreePlayComposer {
             </button>
             <button type="button" class="btn btn-secondary" id="btn-comp-stop">⏹ Stop</button>
             <button type="button" class="btn btn-secondary ${this.useMetronome ? 'is-on' : ''}" id="btn-comp-metro">🥁 Metro</button>
-            <button type="button" class="btn btn-secondary" id="btn-comp-del-note" ${this.selectedNoteId ? '' : 'disabled'}>🗑️ Del Note</button>
+            <button type="button" class="btn btn-secondary" id="btn-comp-del-note" ${this.selectedNoteId ? '' : 'disabled'}>🗑️ Del</button>
             <button type="button" class="btn btn-secondary" id="btn-comp-clear">🧹 Clear</button>
           </div>
         </div>
@@ -204,7 +242,7 @@ export class FreePlayComposer {
                    )
                    .join('')}
                </div>`
-            : `<p class="muted-text" style="margin:0;">No saved tracks in this playlist yet. Record or click the partiture grid to compose!</p>`
+            : `<p class="muted-text" style="margin:0;">Play the Ocarina below or pick a Zelda sample above to compose!</p>`
         }
       </div>
     `;
@@ -271,7 +309,6 @@ export class FreePlayComposer {
     const timeline = this.container.querySelector<HTMLElement>('#partiture-timeline');
     if (!timeline) return;
 
-    // Click empty lane grid to add note
     timeline.querySelectorAll<HTMLElement>('.lane-grid').forEach((grid) => {
       grid.addEventListener('pointerdown', (e) => {
         if ((e.target as HTMLElement).closest('.partiture-note')) return;
@@ -295,7 +332,6 @@ export class FreePlayComposer {
       });
     });
 
-    // Drag or resize existing notes
     timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((el) => {
       const noteId = el.dataset.noteId!;
       const note = this.currentTrack.notes.find((n) => n.id === noteId);
@@ -349,6 +385,21 @@ export class FreePlayComposer {
   }
 
   private bindEvents(): void {
+    this.container.querySelector<HTMLSelectElement>('#comp-sample-select')?.addEventListener('change', (e) => {
+      const val = (e.target as HTMLSelectElement).value;
+      if (!val.startsWith('zelda:')) return;
+      const songId = val.slice(6);
+      const sample = ZELDA_SONGS.find((s) => s.id === songId);
+      if (!sample) return;
+      playUiClick();
+      haptics.tapButton();
+      this.stopPlayback();
+      this.currentTrack = structuredClone(sample);
+      this.selectedNoteId = null;
+      this.onToast(`🎼 Loaded sample: ${sample.title}`);
+      this.render();
+    });
+
     this.container.querySelector<HTMLInputElement>('#comp-track-title')?.addEventListener('input', (e) => {
       this.currentTrack.title = (e.target as HTMLInputElement).value;
     });
@@ -363,6 +414,15 @@ export class FreePlayComposer {
       this.snapBeats = parseFloat((e.target as HTMLSelectElement).value);
       playUiClick();
       haptics.tapButton();
+    });
+
+    this.container.querySelector('#btn-comp-step-input')?.addEventListener('click', (e) => {
+      this.ocarinaToPartiture = !this.ocarinaToPartiture;
+      playUiClick();
+      haptics.tapButton();
+      const btn = e.currentTarget as HTMLButtonElement;
+      btn.classList.toggle('is-on', this.ocarinaToPartiture);
+      btn.textContent = `✍️ Ocarina Input ${this.ocarinaToPartiture ? 'On' : 'Off'}`;
     });
 
     this.container.querySelector('#btn-comp-rec')?.addEventListener('click', () => {
@@ -596,6 +656,9 @@ export class FreePlayComposer {
         playheadEl.style.left = `${84 + this.playheadBeat * PX_PER_BEAT}px`;
       }
 
+      // Auto-scroll horizontally to follow playhead progression!
+      this.scrollToBeat(this.playheadBeat);
+
       if (this.playheadBeat >= maxEndBeat) {
         this.stopPlayback();
         return;
@@ -621,6 +684,8 @@ export class FreePlayComposer {
     this.lastMetronomeBeat = -1;
     const playheadEl = this.container.querySelector<HTMLElement>('#partiture-playhead');
     if (playheadEl) playheadEl.style.left = '84px';
+    const scrollEl = this.container.querySelector<HTMLElement>('#partiture-scroll');
+    if (scrollEl) scrollEl.scrollLeft = 0;
   }
 
   private slugify(s: string): string {

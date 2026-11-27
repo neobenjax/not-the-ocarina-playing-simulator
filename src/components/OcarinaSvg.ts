@@ -51,6 +51,7 @@ export class OcarinaSvgController {
   private keyMapping: KeyMapping;
   private theme: OcarinaTheme = DEFAULT_OCARINA_THEME;
   private customSvg: string | null = null;
+  private customSkinName = 'Custom Ocarina';
   private hideKeyBadges = false;
   private activeHoles = new Set<HoleId>();
   private isBlowing = false;
@@ -79,8 +80,9 @@ export class OcarinaSvgController {
     this.render();
   }
 
-  setCustomSvg(svgMarkup: string): void {
+  setCustomSvg(svgMarkup: string, name = 'Custom Ocarina'): void {
     this.customSvg = svgMarkup;
+    this.customSkinName = name;
     this.render();
   }
 
@@ -240,7 +242,7 @@ export class OcarinaSvgController {
             <span class="live-dot"></span>
             <span id="ocarina-live-note">READY</span>
           </span>
-          <span class="ocarina-skin-pill" id="ocarina-skin-pill">${t.name}</span>
+          <span class="ocarina-skin-pill" id="ocarina-skin-pill">${this.customSvg ? this.customSkinName : t.name}</span>
         </div>
 
         <div class="ocarina-svg-wrapper">

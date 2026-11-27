@@ -587,3 +587,214 @@ dialog.game-dialog::backdrop {
     display: none;
   }
 }
+
+/* Skin Gallery & Custom SVG Module */
+dialog.game-dialog-wide {
+  width: min(95vw, 820px);
+}
+
+.dialog-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(7, 11, 24, 0.55);
+}
+
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.skin-card {
+  appearance: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+  padding: 0.75rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.skin-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(242, 201, 76, 0.5);
+}
+
+.skin-card.is-selected {
+  border-color: var(--zelda-gold);
+  background: rgba(242, 201, 76, 0.14);
+  box-shadow: 0 0 18px rgba(242, 201, 76, 0.28);
+}
+
+.skin-swatch {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  border: 2px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.skin-triforce {
+  font-size: 1.35rem;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.skin-info strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  color: var(--zelda-gold);
+}
+
+.skin-info p {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.custom-skin-card {
+  padding: 0;
+}
+
+.skin-select-overlay {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.custom-svg-thumb svg {
+  width: 44px;
+  height: 44px;
+}
+
+.delete-skin-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  font-size: 0.8rem;
+}
+
+.custom-svg-module {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.instruction-box {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 1rem;
+}
+
+.instruction-box h3 {
+  margin: 0 0 0.5rem;
+  color: var(--zelda-cyan);
+  font-family: var(--font-display);
+}
+
+.instruction-box ol {
+  margin: 0 0 0.85rem;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.instruction-box code {
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--zelda-gold);
+  padding: 0.1rem 0.35rem;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.upload-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.text-input {
+  background: rgba(6, 10, 24, 0.8);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 0.55rem 0.8rem;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+}
+
+.file-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.2rem;
+  border: 2px dashed var(--border-strong);
+  border-radius: 14px;
+  background: rgba(242, 201, 76, 0.06);
+  cursor: pointer;
+  text-align: center;
+}
+
+.file-drop-zone input[type='file'] {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.error-banner {
+  margin: 0;
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
+  background: rgba(231, 76, 60, 0.2);
+  border: 1px solid var(--zelda-ruby);
+  color: #ffb3ab;
+  font-size: 0.88rem;
+}
+
+.custom-preview-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.custom-preview-stage {
+  width: 100%;
+  max-width: 360px;
+}

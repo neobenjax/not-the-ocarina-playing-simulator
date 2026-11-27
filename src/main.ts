@@ -1,9 +1,13 @@
 import './styles/main.css';
-import { HoleId, HOLE_MAP, KeyMapping, AppSettings } from './types';
+import { HoleId, HOLE_MAP, KeyMapping, AppSettings, CustomSvgSkin } from './types';
 import {
+  loadCustomSkins,
   loadKeyMapping,
+  loadSelectedSkinId,
   loadSettings,
+  saveCustomSkins,
   saveKeyMapping,
+  saveSelectedSkinId,
   saveSettings,
 } from './storage/persistence';
 import { haptics } from './haptics/hapticEngine';
@@ -12,16 +16,21 @@ import { menuBgm, playUiClick, setSfxVolumes } from './audio/soundMachineSfx';
 import { OcarinaSvgController } from './components/OcarinaSvg';
 import { KeyMapModal } from './components/KeyMapModal';
 import { SettingsModal } from './components/SettingsModal';
+import { SkinGalleryModal } from './components/SkinGalleryModal';
+import { OCARINA_SKINS } from './data/ocarinaSkins';
 
 class OcarinaApp {
   private root: HTMLElement;
   private settings: AppSettings;
   private keyMapping: KeyMapping;
+  private selectedSkinId: string;
+  private customSkins: CustomSvgSkin[];
   private activeMode: 'free' | 'arcade' = 'free';
 
   private ocarinaCtrl!: OcarinaSvgController;
   private keyMapModal!: KeyMapModal;
   private settingsModal!: SettingsModal;
+  private skinGalleryModal!: SkinGalleryModal;
 
   private heldHoles: HoleId[] = [];
   private isBlowKeyHeld = false;
@@ -31,9 +40,12 @@ class OcarinaApp {
     this.root = root;
     this.settings = loadSettings();
     this.keyMapping = loadKeyMapping();
+    this.selectedSkinId = loadSelectedSkinId();
+    this.customSkins = loadCustomSkins();
 
     this.applyAudioAndHaptics();
     this.renderShell();
+    this.applySelectedSkin();
     this.initModals();
     this.bindKeyboard();
   }
@@ -160,10 +172,22 @@ class OcarinaApp {
     });
 
     this.root.querySelector('#btn-skin-gallery')?.addEventListener('click', () => {
-      playUiClick();
-      haptics.tapButton();
-      this.showToast('Ocarina Skin Gallery & Custom SVG coming in Milestone 2!');
+      this.skinGalleryModal.open(this.selectedSkinId, this.customSkins);
     });
+  }
+
+  private applySelectedSkin(): void {
+    const builtIn = OCARINA_SKINS.find((s) => s.id === this.selectedSkinId);
+    if (builtIn) {
+      this.ocarinaCtrl.setTheme(builtIn);
+      return;
+    }
+    const custom = this.customSkins.find((s) => s.id === this.selectedSkinId);
+    if (custom) {
+      this.ocarinaCtrl.setCustomSvg(custom.svgContent, custom.name);
+      return;
+    }
+    this.ocarinaCtrl.setTheme(OCARINA_SKINS[0]);
   }
 
   private updateModeTabs(): void {
@@ -185,6 +209,23 @@ class OcarinaApp {
       saveSettings(newSettings);
       this.applyAudioAndHaptics();
       this.ocarinaCtrl.setHideKeyBadges(newSettings.forceHideKeyBadges);
+    });
+
+    this.skinGalleryModal = new SkinGalleryModal(this.selectedSkinId, this.customSkins, {
+      onSelectSkin: (skinId) => {
+        this.selectedSkinId = skinId;
+        saveSelectedSkinId(skinId);
+        this.applySelectedSkin();
+        this.showToast('Ocarina skin equipped!');
+      },
+      onAddCustomSkin: (skin) => {
+        this.customSkins = [...this.customSkins, skin];
+        saveCustomSkins(this.customSkins);
+      },
+      onDeleteCustomSkin: (skinId) => {
+        this.customSkins = this.customSkins.filter((s) => s.id !== skinId);
+        saveCustomSkins(this.customSkins);
+      },
     });
   }
 

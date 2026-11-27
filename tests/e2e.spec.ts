@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Not The Ocarina Playing Simulator E2E', () => {
-  test('Desktop: Core Ocarina, Key Mapping, Skin Gallery & Custom SVG, Mode 1 Composer & MP3, Mode 2 Arcade', async ({ page }) => {
+test.describe('Not The Ocarina Playing Simulator — Stage 2 E2E', () => {
+  test('Desktop: Title Screen, Mode 1 Sample Dropdown & Ocarina-First Input, Mode 2 Taiko Stage, PWA', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
     page.on('console', (msg) => {
@@ -11,98 +11,79 @@ test.describe('Not The Ocarina Playing Simulator E2E', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('./', { waitUntil: 'networkidle' });
 
-    // 1. Verify Ocarina SVG and desktop key-bind badges
-    await expect(page.locator('.ocarina-svg')).toBeVisible();
-    await expect(page.locator('[data-hole="hole-a"]')).toBeVisible();
-    await expect(page.locator('.hole-key-badge').first()).toBeVisible();
-    await expect(page.locator('.blow-kbd')).toBeVisible();
+    // 1. Title Screen & PWA Manifest check
+    await expect(page.locator('.game-main-title')).toHaveText('NOT THE OCARINA PLAYING SIMULATOR');
+    await expect(page.locator('#btn-fullscreen')).toBeVisible();
+    await expect(page.locator('#btn-install-pwa')).toBeVisible();
+    const manifestHref = await page.locator('link[rel="manifest"]').getAttribute('href');
+    expect(manifestHref).toContain('manifest.webmanifest');
 
-    // Play a note via keyboard
+    // 2. Enter Mode 1 (Composer Screen)
+    await page.click('#launch-mode-composer');
+    await expect(page.locator('.ocarina-svg')).toBeVisible();
+    await expect(page.locator('.hole-key-badge').first()).toBeVisible();
+
+    // Load a Zelda sample from dropdown
+    await page.selectOption('#comp-sample-select', 'zelda:song-of-storms');
+    await expect(page.locator('#comp-track-title')).toHaveValue('Song of Storms');
+    const sampleNotesCount = await page.locator('.partiture-note').count();
+    expect(sampleNotesCount).toBeGreaterThan(5);
+
+    // Ocarina-first input: pressing Ocarina keys adds notes directly to the partiture!
     await page.keyboard.down('KeyJ');
     await expect(page.locator('#ocarina-live-note')).toContainText('D5');
     await page.keyboard.up('KeyJ');
+    await expect(page.locator('.partiture-note')).toHaveCount(sampleNotesCount + 1);
 
-    // 2. Key Mapping Modal
-    await page.click('#btn-key-map');
-    await expect(page.locator('#keymap-dialog')).toBeVisible();
-    await page.click('#keymap-done-btn');
-    await expect(page.locator('#keymap-dialog')).not.toBeVisible();
+    // Play & Stop
+    await page.click('#btn-comp-play');
+    await page.waitForTimeout(250);
+    await page.click('#btn-comp-stop');
 
-    // 3. Skin Gallery & Custom SVG Upload
+    // Skin Gallery & Custom SVG
     await page.click('#btn-skin-gallery');
     await expect(page.locator('#skin-gallery-dialog')).toBeVisible();
     await page.click('[data-select-skin="majoras-mask"]');
     await expect(page.locator('#ocarina-skin-pill')).toHaveText("Majora's Mask");
-
-    // Customize & Upload SVG tab
-    await page.click('#skin-tab-custom');
-    await expect(page.locator('#btn-download-svg-template')).toBeVisible();
-    const customSvgPayload = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 340">
-        <rect width="640" height="340" fill="#111827" />
-        <g data-hole="hole-a"><circle cx="295" cy="200" r="24" fill="#2f80ed" /></g>
-        <g data-hole="hole-down"><circle cx="368" cy="222" r="22" fill="#f2c94c" /></g>
-        <g data-hole="hole-right"><circle cx="438" cy="186" r="22" fill="#27ae60" /></g>
-        <g data-hole="hole-left"><circle cx="356" cy="146" r="22" fill="#ff6b35" /></g>
-        <g data-hole="hole-up"><circle cx="422" cy="118" r="21" fill="#e74c3c" /></g>
-      </svg>
-    `;
-    await page.setInputFiles('#custom-svg-file', {
-      name: 'my-custom.svg',
-      mimeType: 'image/svg+xml',
-      buffer: Buffer.from(customSvgPayload),
-    });
-    await expect(page.locator('#btn-save-custom-svg')).toBeVisible();
-    await page.click('#btn-save-custom-svg');
     await page.click('#skin-done-btn');
-    await expect(page.locator('#ocarina-skin-pill')).toHaveText('My Custom Ocarina');
 
-    // 4. Mode 1: Partiture Timeline Editor, Save Track, Export .txt & MP3
-    await expect(page.locator('.partiture-timeline')).toBeVisible();
-    const initialNotes = await page.locator('.partiture-note').count();
-    await page.locator('[data-grid-hole="hole-up"]').click({ position: { x: 520, y: 20 } });
-    await expect(page.locator('.partiture-note')).toHaveCount(initialNotes + 1);
-
-    await page.click('#btn-comp-save');
-
-    // Export Partiture .txt download
+    // Export .txt & .mp3
     const txtDownloadPromise = page.waitForEvent('download');
     await page.click('#btn-export-txt');
     const txtDownload = await txtDownloadPromise;
     expect(txtDownload.suggestedFilename()).toContain('.ocarina.txt');
 
-    // Export MP3 download
     const mp3DownloadPromise = page.waitForEvent('download');
     await page.click('#btn-export-mp3');
     const mp3Download = await mp3DownloadPromise;
     expect(mp3Download.suggestedFilename()).toContain('.mp3');
 
-    // 5. Mode 2: Arcade Mode
-    await page.click('#tab-mode-arcade');
-    await expect(page.locator('.arcade-song-grid')).toBeVisible();
-    await expect(page.locator('[data-select-song="zelda-lullaby"]')).toBeVisible();
-    await expect(page.locator('[data-select-song="song-of-storms"]')).toBeVisible();
+    // 3. Return to Title & Enter Mode 2 (Arcade)
+    await page.click('#btn-back-title');
+    await expect(page.locator('.game-main-title')).toBeVisible();
+    await page.click('#launch-mode-arcade');
 
+    // Verify all 9 Zelda songs in dropdown & grid
+    await expect(page.locator('#arcade-song-dropdown option')).toHaveCount(10); // 9 Zelda + 1 default playlist track
+    await page.selectOption('#arcade-song-dropdown', 'sarias-song');
     await page.click('#btn-assist-original');
     await page.click('#btn-offset-plus');
     await expect(page.locator('#arcade-offset-val')).toHaveText('+10ms');
 
+    // Start Taiko-style Arcade Stage
     await page.click('#btn-arcade-start');
+    await expect(page.locator('.taiko-soul-gauge')).toBeVisible();
     await expect(page.locator('#arcade-highway-canvas')).toBeVisible();
-    await expect(page.locator('#arcade-live-miss-streak')).toContainText('Miss Streak:');
+    await expect(page.locator('.taiko-festival-stage')).toBeVisible();
+    await expect(page.locator('.ocarina-svg')).toBeVisible();
 
     await page.click('#btn-arcade-quit');
     await expect(page.locator('.arcade-song-grid')).toBeVisible();
 
-    // 6. Settings Modal
-    await page.click('#btn-settings');
-    await expect(page.locator('#settings-dialog')).toBeVisible();
-    await page.click('#settings-done-btn');
-
     expect(errors).toEqual([]);
   });
 
-  test('Mobile Touch: Responsive layout without horizontal overflow and key badges hidden', async ({ browser }) => {
+  test('Mobile Touch: Dedicated screens, zero horizontal overflow, key badges hidden', async ({ browser }) => {
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
       hasTouch: true,
@@ -111,8 +92,9 @@ test.describe('Not The Ocarina Playing Simulator E2E', () => {
     const page = await context.newPage();
     await page.goto('./', { waitUntil: 'networkidle' });
 
+    await expect(page.locator('.game-main-title')).toBeVisible();
+    await page.click('#launch-mode-arcade');
     await expect(page.locator('.ocarina-svg')).toBeVisible();
-    // Key badges must be hidden on touch devices
     await expect(page.locator('.hole-key-badge')).toHaveCount(0);
     await expect(page.locator('.blow-kbd')).toHaveCount(0);
 

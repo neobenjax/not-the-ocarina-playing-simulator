@@ -117,6 +117,13 @@ test.describe('Not The Ocarina Playing Simulator — Arcade Overhaul E2E', () =>
     await page.waitForTimeout(3200);
     await expect(page.locator('.ocarina-svg-wrapper')).toHaveClass(/is-zoomed/);
 
+    // Pause via ESC and resume via button
+    await expect(page.locator('#btn-arcade-pause')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#arcade-pause-overlay')).toHaveClass(/is-active/);
+    await page.click('#btn-pause-resume');
+    await expect(page.locator('#arcade-pause-overlay')).not.toHaveClass(/is-active/);
+
     // Hit the note & wait for the short stage to reach Results Screen
     await page.keyboard.press('KeyJ');
     await expect(page.locator('.results-song-title-right')).toHaveText('Quick Test Tune', { timeout: 6000 });

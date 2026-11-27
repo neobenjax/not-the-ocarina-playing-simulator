@@ -61,74 +61,19 @@ function createMasterBus(ctx: AudioContext, reverbMix: number, reverbDecaySec: n
   return master;
 }
 
-/** Sound Machine Recipe: Ocarina UI Click */
+/** Ocarina Recipe: Crisp Ocarina UI Click */
 export function playUiClick(): void {
   const gainScale = getEffectiveSfxGain();
   if (gainScale <= 0.01) return;
-  const ctx = getSharedAudioContext();
-  const master = createMasterBus(ctx, 0.15, 0.3);
-  const now = ctx.currentTime + 0.005;
-
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(2400, now);
-  filter.Q.setValueAtTime(1.2, now);
-  filter.frequency.exponentialRampToValueAtTime(800, now + 0.12);
-
-  const env = ctx.createGain();
-  env.gain.setValueAtTime(0.0001, now);
-  env.gain.linearRampToValueAtTime(0.32, now + 0.004);
-  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
-
-  const osc = ctx.createOscillator();
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(880, now);
-
-  const mod = ctx.createOscillator();
-  mod.type = 'sine';
-  mod.frequency.setValueAtTime(1760, now);
-  const modGain = ctx.createGain();
-  modGain.gain.setValueAtTime(2640, now);
-  modGain.gain.exponentialRampToValueAtTime(105.6, now + 0.045);
-
-  mod.connect(modGain);
-  modGain.connect(osc.frequency);
-  osc.connect(filter);
-  filter.connect(env);
-  env.connect(master);
-
-  mod.start(now);
-  osc.start(now);
-  mod.stop(now + 0.18);
-  osc.stop(now + 0.18);
+  ocarinaSynth.playOneShot(1174.66, 0.06, 0.45 * gainScale, 0);
 }
 
-/** Sound Machine Recipe: Ocarina Modal Open */
+/** Ocarina Recipe: Ocarina Modal Open */
 export function playModalOpen(): void {
-  if (getEffectiveSfxGain() <= 0.01) return;
-  const ctx = getSharedAudioContext();
-  const master = createMasterBus(ctx, 0.3, 0.7);
-  const now = ctx.currentTime + 0.005;
-
-  for (const offset of [-0.05, 0.05]) {
-    const pan = ctx.createStereoPanner();
-    pan.pan.setValueAtTime(offset * 4, now);
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0.0001, now);
-    env.gain.linearRampToValueAtTime(0.22, now + 0.006);
-    env.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(659.25, now);
-    osc.detune.setValueAtTime(offset * 100, now);
-
-    osc.connect(env);
-    env.connect(pan);
-    pan.connect(master);
-    osc.start(now);
-    osc.stop(now + 0.25);
-  }
+  const gainScale = getEffectiveSfxGain();
+  if (gainScale <= 0.01) return;
+  ocarinaSynth.playOneShot(698.46, 0.11, 0.42 * gainScale, 0);
+  ocarinaSynth.playOneShot(880.0, 0.16, 0.48 * gainScale, 0.08);
 }
 
 /** Sound Machine Recipe: Woodblock Rim Tick (Metronome) */
@@ -164,86 +109,44 @@ export function playMetronomeTick(accent = false): void {
   osc.stop(now + 0.07);
 }
 
-/** Sound Machine Recipe: Secret Discovery Chime */
+/** Ocarina Recipe: Secret Discovery Chime */
 export function playMelodyChime(): void {
-  if (getEffectiveSfxGain() <= 0.01) return;
-  const ctx = getSharedAudioContext();
-  const master = createMasterBus(ctx, 0.4, 1.2);
-  const now = ctx.currentTime + 0.01;
-  const notes = [783.99, 739.99, 622.25, 440.0, 415.3, 659.25, 830.61, 1046.5];
-
+  const gainScale = getEffectiveSfxGain();
+  if (gainScale <= 0.01) return;
+  const notes = [587.33, 698.46, 880.0, 987.77, 1174.66];
   notes.forEach((freq, idx) => {
-    const t = now + idx * 0.095;
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0.0001, t);
-    env.gain.linearRampToValueAtTime(0.24, t + 0.008);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(freq, t);
-
-    osc.connect(env);
-    env.connect(master);
-    osc.start(t);
-    osc.stop(t + 0.38);
+    ocarinaSynth.playOneShot(freq, 0.24, 0.55 * gainScale, idx * 0.09);
   });
 }
 
-/** Sound Machine Recipe: Stage Clear Fanfare */
+/** Ocarina Recipe: Stage Clear Fanfare */
 export function playStageClear(): void {
-  if (getEffectiveSfxGain() <= 0.01) return;
-  const ctx = getSharedAudioContext();
-  const master = createMasterBus(ctx, 0.45, 1.4);
-  const now = ctx.currentTime + 0.01;
-  const chord = [587.33, 739.99, 880.0, 1174.66];
-
-  chord.forEach((freq, i) => {
-    const t = now + i * 0.08;
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0.0001, t);
-    env.gain.linearRampToValueAtTime(0.28, t + 0.015);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
-
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(freq, t);
-    osc.connect(env);
-    env.connect(master);
-    osc.start(t);
-    osc.stop(t + 0.95);
-  });
+  const gainScale = getEffectiveSfxGain();
+  if (gainScale <= 0.01) return;
+  const fanfare = [
+    { f: 698.46, d: 0.18, t: 0 },
+    { f: 880.0, d: 0.18, t: 0.11 },
+    { f: 987.77, d: 0.18, t: 0.22 },
+    { f: 1174.66, d: 0.55, t: 0.34 },
+  ];
+  for (const n of fanfare) {
+    ocarinaSynth.playOneShot(n.f, n.d, 0.65 * gainScale, n.t);
+  }
 }
 
-/** Sound Machine Recipe: Game Over Fail */
+/** Ocarina Recipe: Ocarina Game Over Lament */
 export function playGameOver(): void {
-  if (getEffectiveSfxGain() <= 0.01) return;
-  const ctx = getSharedAudioContext();
-  const master = createMasterBus(ctx, 0.35, 1.0);
-  const now = ctx.currentTime + 0.01;
-  const notes = [293.66, 261.63, 220.0, 146.83];
-
-  notes.forEach((freq, i) => {
-    const t = now + i * 0.22;
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0.0001, t);
-    env.gain.linearRampToValueAtTime(0.28, t + 0.015);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
-
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(freq, t);
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(900, t);
-
-    osc.connect(filter);
-    filter.connect(env);
-    env.connect(master);
-    osc.start(t);
-    osc.stop(t + 0.45);
-  });
+  const gainScale = getEffectiveSfxGain();
+  if (gainScale <= 0.01) return;
+  const lament = [
+    { f: 987.77, d: 0.26, t: 0 },
+    { f: 880.0, d: 0.26, t: 0.24 },
+    { f: 698.46, d: 0.3, t: 0.48 },
+    { f: 587.33, d: 0.72, t: 0.74 },
+  ];
+  for (const n of lament) {
+    ocarinaSynth.playOneShot(n.f, n.d, 0.6 * gainScale, n.t);
+  }
 }
 
 export type BgmTrackId = 'lullaby' | 'emotional';

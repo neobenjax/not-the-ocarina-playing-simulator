@@ -1,3 +1,4 @@
+import confetti from 'canvas-confetti';
 import {
   AppSettings,
   ArcadeHighScore,
@@ -30,6 +31,21 @@ interface ChartNoteRuntime {
   durationSec: number;
   judged: boolean;
   guidePlayed: boolean;
+}
+
+interface PoppingNote {
+  holeId: HoleId;
+  pitchBend: PitchBend;
+  hitPerf: number;
+  color: string;
+  label: string;
+}
+
+interface ActiveSustain {
+  note: ChartNoteRuntime;
+  lastTickSec: number;
+  lastSparkPerf: number;
+  color: string;
 }
 
 type JudgementType = 'GOOD' | 'OKAY' | 'BAD';
@@ -74,7 +90,14 @@ export class ArcadeMode {
   private songStartPerf = 0;
   private leadInSec = 3.0;
   private countdownZoomApplied = false;
+  private isPaused = false;
+  private pauseStartedPerf = 0;
+  private hitstopUntilPerf = 0;
+  private frozenSongSec = 0;
+
   private chartNotes: ChartNoteRuntime[] = [];
+  private poppingNotes: PoppingNote[] = [];
+  private activeSustains = new Map<HoleId, ActiveSustain>();
   private lastBeatTick = -1;
 
   private counts: JudgementCounts = {
@@ -87,16 +110,19 @@ export class ArcadeMode {
     totalNotes: 0,
   };
   private currentCombo = 0;
+  private sustainBonusScore = 0;
   private lifeMeter = 50; // 0..100
   private lastJudgementText = '';
   private lastJudgementColor = '#ffffff';
   private lastJudgementPerf = 0;
+  private comboBreakTimer: number | null = null;
 
   private onSettingsChange: (s: AppSettings) => void;
   private onSaveScore: (score: ArcadeHighScore) => void;
   private onToast: (msg: string) => void;
   private onPhaseChange: (phase: ArcadePhase) => void;
   private onZoomOcarina: (zoomed: boolean) => void;
+  private onMissFlick: () => void;
   private onBackToMenu: () => void;
 
   constructor(
@@ -111,6 +137,7 @@ export class ArcadeMode {
       onToast: (msg: string) => void;
       onPhaseChange: (phase: ArcadePhase) => void;
       onZoomOcarina: (zoomed: boolean) => void;
+      onMissFlick: () => void;
       onBackToMenu: () => void;
     }
   ) {
@@ -125,6 +152,7 @@ export class ArcadeMode {
     this.onToast = callbacks.onToast;
     this.onPhaseChange = callbacks.onPhaseChange;
     this.onZoomOcarina = callbacks.onZoomOcarina;
+    this.onMissFlick = callbacks.onMissFlick;
     this.onBackToMenu = callbacks.onBackToMenu;
     this.onPhaseChange('select');
     this.render();
@@ -132,6 +160,9 @@ export class ArcadeMode {
 
   destroy(): void {
     this.stopLoop();
+    this.activeSustains.clear();
+    this.hidePauseOverlay();
+    this.clearComboBanner();
     this.onZoomOcarina(false);
   }
 
@@ -240,17 +271,172 @@ export class ArcadeMode {
     this.render();
   }
 
+  togglePause(): void {
+    if (this.phase !== 'playing') return;
+    if (this.isPaused) {
+      this.resumeGame();
+    } else {
+      this.pauseGame();
+    }
+  }
+
+  private pauseGame(): void {
+    if (this.isPaused || this.phase !== 'playing') return;
+    this.isPaused = true;
+    this.pauseStartedPerf = performance.now();
+    this.stopLoop();
+    ocarinaSynth.stopAllVoices();
+    this.activeSustains.clear();
+    playUiClick();
+
+    const overlay = document.getElementById('arcade-pause-overlay');
+    if (overlay) {
+      overlay.innerHTML = `
+        <div class="pause-card">
+          <h2>PAUSED</h2>
+          <p class="muted-text">${this.selectedSong.title}</p>
+          <div class="pause-actions">
+            <button type="button" class="btn btn-gold btn-lg" id="btn-pause-resume">▶ Resume (ESC)</button>
+            <button type="button" class="btn btn-secondary" id="btn-pause-restart">↻ Restart</button>
+            <button type="button" class="btn btn-danger" id="btn-pause-quit">⏹ Song Select</button>
+          </div>
+        </div>
+      `;
+      overlay.classList.add('is-active');
+      overlay.querySelector('#btn-pause-resume')?.addEventListener('click', () => this.resumeGame());
+      overlay.querySelector('#btn-pause-restart')?.addEventListener('click', () => {
+        this.hidePauseOverlay();
+        this.startGame();
+      });
+      overlay.querySelector('#btn-pause-quit')?.addEventListener('click', () => {
+        this.hidePauseOverlay();
+        this.stopLoop();
+        this.setPhase('select');
+        this.render();
+      });
+    }
+  }
+
+  private resumeGame(): void {
+    if (!this.isPaused || this.phase !== 'playing') return;
+    const pausedDur = performance.now() - this.pauseStartedPerf;
+    this.songStartPerf += pausedDur;
+    this.isPaused = false;
+    this.hidePauseOverlay();
+    playUiClick();
+    this.startLoop();
+  }
+
+  private hidePauseOverlay(): void {
+    const overlay = document.getElementById('arcade-pause-overlay');
+    if (overlay) {
+      overlay.classList.remove('is-active');
+      overlay.innerHTML = '';
+    }
+  }
+
+  private fireHitSparks(holeId: HoleId, pitchBend: PitchBend, count = 16): void {
+    const canvas = this.container.querySelector<HTMLCanvasElement>('#arcade-highway-canvas');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    if (w <= 0 || h <= 0) return;
+
+    const labelColW = Math.min(64, Math.max(44, w * 0.08));
+    const receptorX = labelColW + Math.min(68, w * 0.1);
+    const laneIdx = LANES_TOP_TO_BOTTOM.indexOf(holeId);
+    const laneH = h / LANES_TOP_TO_BOTTOM.length;
+    const cy =
+      pitchBend === 'up'
+        ? laneIdx * laneH + laneH * 0.28
+        : pitchBend === 'down'
+          ? laneIdx * laneH + laneH * 0.72
+          : laneIdx * laneH + laneH * 0.5;
+
+    const ox = (rect.left + receptorX) / window.innerWidth;
+    const oy = (rect.top + cy) / window.innerHeight;
+    const color = HOLE_MAP[holeId].color;
+
+    try {
+      void confetti({
+        particleCount: count,
+        spread: 65,
+        startVelocity: 24,
+        gravity: 0.7,
+        ticks: 40,
+        scalar: 0.7,
+        origin: { x: Math.max(0.02, Math.min(0.98, ox)), y: Math.max(0.02, Math.min(0.98, oy)) },
+        colors: [color, '#f2c94c', '#ffffff'],
+        disableForReducedMotion: true,
+      });
+    } catch {
+      // Ignore if headless canvas unavailable
+    }
+  }
+
+  private triggerJuiceShake(): void {
+    const topEl = this.container.querySelector<HTMLElement>('.arcade-ingame-top');
+    if (!topEl) return;
+    topEl.classList.remove('is-juice-shake');
+    void topEl.offsetWidth;
+    topEl.classList.add('is-juice-shake');
+  }
+
+  private updateComboBanner(mode: 'hit' | 'break' | 'reset'): void {
+    const el = document.getElementById('arcade-combo-banner');
+    if (!el) return;
+
+    if (this.comboBreakTimer !== null) {
+      clearTimeout(this.comboBreakTimer);
+      this.comboBreakTimer = null;
+    }
+
+    if (mode === 'reset') {
+      el.className = 'arcade-combo-banner';
+      el.innerHTML = '';
+      return;
+    }
+
+    if (mode === 'break') {
+      el.className = 'arcade-combo-banner is-visible is-combo-break';
+      this.comboBreakTimer = window.setTimeout(() => {
+        el.className = 'arcade-combo-banner';
+        el.innerHTML = '';
+      }, 420);
+      return;
+    }
+
+    if (this.currentCombo <= 0) {
+      el.className = 'arcade-combo-banner';
+      el.innerHTML = '';
+      return;
+    }
+
+    const isMilestone = this.currentCombo > 0 && this.currentCombo % 10 === 0;
+    el.innerHTML = `<span class="combo-num">${this.currentCombo}</span><span class="combo-word">COMBO</span>`;
+    el.className = 'arcade-combo-banner is-visible';
+    void el.offsetWidth;
+    el.classList.add(isMilestone ? 'is-milestone-pop' : 'is-hit-pop');
+  }
+
+  private clearComboBanner(): void {
+    const el = document.getElementById('arcade-combo-banner');
+    if (el) {
+      el.className = 'arcade-combo-banner';
+      el.innerHTML = '';
+    }
+  }
+
   onPlayerInput(holeId: HoleId, pitchBend: PitchBend = 'normal'): boolean {
-    if (this.phase !== 'playing') return false;
+    if (this.phase !== 'playing' || this.isPaused) return false;
 
     const nowSec = this.getCurrentSongSec();
     if (nowSec < -0.25) {
-      // Allow testing sound during countdown without penalizing
       return false;
     }
     const offsetSec = this.settings.offsetMs / 1000;
 
-    // 1. Prefer matching an unjudged note on the exact pressed holeId AND pitchBend (enables chords!)
     let candidate: ChartNoteRuntime | null = null;
     let bestAbsDiff = Infinity;
     for (const n of this.chartNotes) {
@@ -262,7 +448,6 @@ export class ArcadeMode {
       }
     }
 
-    // 2. If no exact match, check if a note (wrong hole or wrong pitchBend) is right on the receptor
     if (!candidate) {
       let wrongCandidate: ChartNoteRuntime | null = null;
       let wrongDiff = Infinity;
@@ -288,25 +473,61 @@ export class ArcadeMode {
     if (msDiff <= 95) j = 'GOOD';
     else if (msDiff <= 165) j = 'OKAY';
 
+    const meta = HOLE_MAP[holeId];
     if (j === 'GOOD') {
       if (msDiff <= 50) this.counts.perfect++;
       else this.counts.great++;
       this.currentCombo++;
       this.lifeMeter = Math.min(100, this.lifeMeter + 4.5);
       haptics.hitPerfect();
-      this.setJudgementPopup('GOOD!', '#27ae60');
+      this.setJudgementPopup('GOOD!', '#4ade80');
+      // Hitstop (28ms freeze frame) + Particle Burst + Note Pop + Juice Shake
+      this.frozenSongSec = nowSec;
+      this.hitstopUntilPerf = performance.now() + 28;
+      this.fireHitSparks(holeId, candidate.pitchBend, 16);
+      this.triggerJuiceShake();
+      this.updateComboBanner('hit');
     } else if (j === 'OKAY') {
       this.counts.good++;
       this.currentCombo++;
       this.lifeMeter = Math.min(100, this.lifeMeter + 2);
       haptics.hitGood();
       this.setJudgementPopup('OKAY', '#f2c94c');
+      this.fireHitSparks(holeId, candidate.pitchBend, 8);
+      this.updateComboBanner('hit');
     } else {
+      const hadCombo = this.currentCombo > 0;
       this.counts.bad++;
       this.currentCombo = 0;
       this.lifeMeter = Math.max(0, this.lifeMeter - 5);
       haptics.tapButton();
       this.setJudgementPopup('BAD', '#ff6b35');
+      this.onMissFlick();
+      if (hadCombo) this.updateComboBanner('break');
+    }
+
+    // Popping Note Scale Tween
+    this.poppingNotes.push({
+      holeId,
+      pitchBend: candidate.pitchBend,
+      hitPerf: performance.now(),
+      color: meta.color,
+      label:
+        candidate.pitchBend === 'up'
+          ? `${meta.ootButton}↑`
+          : candidate.pitchBend === 'down'
+            ? `${meta.ootButton}↓`
+            : meta.ootButton,
+    });
+
+    // Long Note Sustain State
+    if (candidate.durationSec >= 0.4 && j !== 'BAD') {
+      this.activeSustains.set(holeId, {
+        note: candidate,
+        lastTickSec: nowSec,
+        lastSparkPerf: performance.now(),
+        color: meta.color,
+      });
     }
 
     if (this.currentCombo > this.counts.maxCombo) {
@@ -314,7 +535,7 @@ export class ArcadeMode {
     }
 
     const vol = this.settings.masterVolume * this.settings.ocarinaVolume;
-    ocarinaSynth.playOneShot(getBentFrequency(holeId, candidate.pitchBend), Math.min(0.65, candidate.durationSec), vol);
+    ocarinaSynth.playOneShot(getBentFrequency(holeId, candidate.pitchBend), Math.min(0.75, candidate.durationSec), vol);
     this.updateLiveHud();
     if (this.lifeMeter <= 0) {
       this.triggerGameOver();
@@ -322,13 +543,20 @@ export class ArcadeMode {
     return true;
   }
 
+  onPlayerRelease(holeId: HoleId): void {
+    this.activeSustains.delete(holeId);
+  }
+
   private registerMiss(freq: number): void {
+    const hadCombo = this.currentCombo > 0;
     this.counts.miss++;
     this.currentCombo = 0;
     this.lifeMeter = Math.max(0, this.lifeMeter - 8);
     ocarinaSynth.playDistortedMiss(freq);
     haptics.miss();
+    this.onMissFlick();
     this.setJudgementPopup('BAD!', '#e74c3c');
+    if (hadCombo) this.updateComboBanner('break');
     this.updateLiveHud();
 
     if (this.lifeMeter <= 0) {
@@ -343,6 +571,9 @@ export class ArcadeMode {
   }
 
   private getCurrentSongSec(): number {
+    if (performance.now() < this.hitstopUntilPerf) {
+      return this.frozenSongSec;
+    }
     return (performance.now() - this.songStartPerf) / 1000 - this.leadInSec;
   }
 
@@ -351,11 +582,17 @@ export class ArcadeMode {
     this.onPhaseChange(phase);
     if (phase !== 'playing') {
       this.onZoomOcarina(false);
+      this.clearComboBanner();
     }
   }
 
   private startGame(): void {
     this.stopLoop();
+    this.hidePauseOverlay();
+    this.isPaused = false;
+    this.activeSustains.clear();
+    this.poppingNotes = [];
+
     const secPerBeat = 60 / Math.max(40, this.selectedSong.bpm);
     this.chartNotes = [...this.selectedSong.notes]
       .sort((a, b) => a.startBeat - b.startBeat)
@@ -384,11 +621,14 @@ export class ArcadeMode {
       totalNotes: this.chartNotes.length,
     };
     this.currentCombo = 0;
+    this.sustainBonusScore = 0;
     this.lifeMeter = 50;
     this.lastJudgementText = '';
     this.lastBeatTick = -10;
     this.countdownZoomApplied = false;
+    this.hitstopUntilPerf = 0;
     this.songStartPerf = performance.now();
+    this.updateComboBanner('reset');
     this.setPhase('playing');
     this.onZoomOcarina(false);
     this.render();
@@ -406,7 +646,7 @@ export class ArcadeMode {
       this.chartNotes.reduce((m, n) => Math.max(m, n.targetSec + n.durationSec), 0) + 1.2;
 
     const frame = () => {
-      if (this.phase !== 'playing') return;
+      if (this.phase !== 'playing' || this.isPaused) return;
 
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
@@ -417,9 +657,10 @@ export class ArcadeMode {
 
       const w = rect.width;
       const h = rect.height;
+      const nowPerf = performance.now();
       const nowSec = this.getCurrentSongSec();
 
-      // Update 3-2-1 Countdown overlay & trigger Ocarina zoom-in when countdown finishes
+      // Update 3-2-1 Countdown overlay & trigger Ocarina zoom-in
       const countdownEl = document.getElementById('arcade-countdown-overlay');
       if (nowSec < 0) {
         const countNum = Math.ceil(-nowSec);
@@ -440,22 +681,23 @@ export class ArcadeMode {
       ctx.save();
       ctx.scale(dpr, dpr);
 
-      // 5-Track Partiture Background
-      ctx.fillStyle = '#0f1629';
+      // Standardized 5-Track Partiture Background (matches Composer)
+      ctx.fillStyle = '#080c1a';
       ctx.fillRect(0, 0, w, h);
 
       const labelColW = Math.min(64, Math.max(44, w * 0.08));
-      const receptorX = labelColW + Math.min(54, w * 0.08);
+      const receptorX = labelColW + Math.min(68, w * 0.1);
       const laneH = h / LANES_TOP_TO_BOTTOM.length;
+      const pxPerSec = 240 * this.settings.scrollSpeed;
+      const offsetSec = this.settings.offsetMs / 1000;
 
-      // Draw 5 horizontal tracks (same order as Composer: ▲, ◀, ▶, ▼, A)
+      // Draw 5 horizontal tracks
       LANES_TOP_TO_BOTTOM.forEach((holeId, idx) => {
         const meta = HOLE_MAP[holeId];
         const y0 = idx * laneH;
-        ctx.fillStyle = idx % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.14)';
+        ctx.fillStyle = idx % 2 === 0 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.16)';
         ctx.fillRect(labelColW, y0, w - labelColW, laneH);
 
-        // Track separator
         ctx.strokeStyle = 'rgba(255,255,255,0.09)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -463,11 +705,11 @@ export class ArcadeMode {
         ctx.lineTo(w, y0 + laneH);
         ctx.stroke();
 
-        // Left lane header badge
-        ctx.fillStyle = '#0a0f1f';
+        // Left lane header badge (Composer style)
+        ctx.fillStyle = '#0d142b';
         ctx.fillRect(0, y0, labelColW, laneH);
         ctx.fillStyle = meta.color;
-        ctx.fillRect(0, y0, 5, laneH);
+        ctx.fillRect(0, y0, 4, laneH);
         ctx.fillStyle = '#ffffff';
         ctx.font = '800 13px Fredoka, sans-serif';
         ctx.textAlign = 'center';
@@ -477,9 +719,6 @@ export class ArcadeMode {
         ctx.font = '700 10px Nunito, sans-serif';
         ctx.fillText(meta.noteName, labelColW * 0.52, y0 + laneH * 0.72);
       });
-
-      const pxPerSec = 240 * this.settings.scrollSpeed;
-      const offsetSec = this.settings.offsetMs / 1000;
 
       const currentBeat = Math.floor(nowSec / secPerBeat);
       if (nowSec >= -0.05 && currentBeat > this.lastBeatTick) {
@@ -496,7 +735,7 @@ export class ArcadeMode {
         if (b < 0) continue;
         const bx = receptorX + (b * secPerBeat - nowSec) * pxPerSec;
         if (bx < labelColW) continue;
-        ctx.strokeStyle = b % 4 === 0 ? 'rgba(242, 201, 76, 0.35)' : 'rgba(255, 255, 255, 0.08)';
+        ctx.strokeStyle = b % 4 === 0 ? 'rgba(242, 201, 76, 0.32)' : 'rgba(255, 255, 255, 0.08)';
         ctx.lineWidth = b % 4 === 0 ? 2 : 1;
         ctx.beginPath();
         ctx.moveTo(bx, 0);
@@ -504,41 +743,95 @@ export class ArcadeMode {
         ctx.stroke();
       }
 
-      // Hit Target Zone on the left (vertical judgement line + circular lane targets)
-      ctx.fillStyle = 'rgba(242, 201, 76, 0.08)';
-      ctx.fillRect(receptorX - 18, 0, 36, h);
-      ctx.strokeStyle = 'rgba(242, 201, 76, 0.7)';
+      // Visible Judgement Threshold Zones around receptorX (GOOD / OKAY / BAD)
+      const badPx = 0.22 * pxPerSec;
+      const okayPx = 0.165 * pxPerSec;
+      const goodPx = 0.095 * pxPerSec;
+
+      ctx.fillStyle = 'rgba(248, 113, 113, 0.12)';
+      ctx.fillRect(Math.max(labelColW, receptorX - badPx), 0, badPx * 2, h);
+      ctx.fillStyle = 'rgba(242, 201, 76, 0.16)';
+      ctx.fillRect(Math.max(labelColW, receptorX - okayPx), 0, okayPx * 2, h);
+      ctx.fillStyle = 'rgba(74, 222, 128, 0.22)';
+      ctx.fillRect(Math.max(labelColW, receptorX - goodPx), 0, goodPx * 2, h);
+
+      // Threshold labels
+      ctx.font = '800 9px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#4ade80';
+      ctx.fillText('GOOD', receptorX, 10);
+      ctx.fillStyle = '#f2c94c';
+      ctx.fillText('OK', receptorX + (goodPx + okayPx) * 0.5, 10);
+      ctx.fillStyle = '#f87171';
+      ctx.fillText('BAD', receptorX + (okayPx + badPx) * 0.5, 10);
+
+      // Center receptor line
+      ctx.strokeStyle = 'rgba(242, 201, 76, 0.85)';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(receptorX, 0);
       ctx.lineTo(receptorX, h);
       ctx.stroke();
 
+      // Update Active Long-Note Sustains (Hold Beam, Body Glow, Vibration, Hold Ticks, Continuous Sparks)
+      for (const [holeId, sus] of Array.from(this.activeSustains.entries())) {
+        const endSec = sus.note.targetSec + offsetSec + sus.note.durationSec;
+        if (nowSec >= endSec) {
+          this.activeSustains.delete(holeId);
+          continue;
+        }
+        // Hold Ticks every 0.25s
+        if (nowSec - sus.lastTickSec >= 0.25) {
+          sus.lastTickSec = nowSec;
+          this.sustainBonusScore += 50;
+          this.currentCombo++;
+          if (this.currentCombo > this.counts.maxCombo) this.counts.maxCombo = this.currentCombo;
+          this.updateComboBanner('hit');
+          this.updateLiveHud();
+        }
+        // Continuous Sparks every 100ms
+        if (nowPerf - sus.lastSparkPerf >= 100) {
+          sus.lastSparkPerf = nowPerf;
+          this.fireHitSparks(holeId, sus.note.pitchBend, 5);
+        }
+      }
+
+      // Draw lane receptor rings (with vibration tween if held in Sustain State)
       const targetRadius = Math.max(10, Math.min(18, laneH * 0.34));
       LANES_TOP_TO_BOTTOM.forEach((holeId, idx) => {
         const meta = HOLE_MAP[holeId];
-        const cy = idx * laneH + laneH * 0.5;
+        const sus = this.activeSustains.get(holeId);
+        const vibX = sus ? Math.sin(nowPerf * 0.09) * 2.2 : 0;
+        const vibY = sus ? Math.cos(nowPerf * 0.11) * 1.5 : 0;
+        const cy = idx * laneH + laneH * 0.5 + vibY;
+
+        if (sus) {
+          // Hold Beam / Energy Flare at receptor
+          const flareGrad = ctx.createRadialGradient(receptorX + vibX, cy, 4, receptorX + vibX, cy, targetRadius * 2.1);
+          flareGrad.addColorStop(0, '#ffffff');
+          flareGrad.addColorStop(0.4, sus.color);
+          flareGrad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = flareGrad;
+          ctx.beginPath();
+          ctx.arc(receptorX + vibX, cy, targetRadius * 2.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
         ctx.beginPath();
-        ctx.arc(receptorX, cy, targetRadius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(11, 16, 33, 0.75)';
+        ctx.arc(receptorX + vibX, cy, targetRadius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(11, 16, 33, 0.78)';
         ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = meta.color;
+        ctx.lineWidth = sus ? 4 : 2.5;
+        ctx.strokeStyle = sus ? '#ffffff' : meta.color;
         ctx.stroke();
       });
 
-      // Render Notes per lane (right-to-left) with upper/lower/center pitch-bend positioning
+      // Render Notes (Composer-standardized rounded pills with half-lane pitch-bend positioning)
       for (const n of this.chartNotes) {
         const meta = HOLE_MAP[n.holeId];
         const laneIdx = LANES_TOP_TO_BOTTOM.indexOf(n.holeId);
-        const cy =
-          n.pitchBend === 'up'
-            ? laneIdx * laneH + laneH * 0.28
-            : n.pitchBend === 'down'
-              ? laneIdx * laneH + laneH * 0.72
-              : laneIdx * laneH + laneH * 0.5;
-        const noteR = n.pitchBend === 'normal' ? targetRadius - 1 : Math.max(8, targetRadius * 0.72);
         const target = n.targetSec + offsetSec;
+        const isHeldSustain = this.activeSustains.get(n.holeId)?.note.id === n.id;
 
         if (!n.guidePlayed && nowSec >= target) {
           n.guidePlayed = true;
@@ -557,31 +850,48 @@ export class ArcadeMode {
           }
         }
 
-        if (n.judged) continue;
+        if (n.judged && !isHeldSustain) continue;
 
-        const x = receptorX + (target - nowSec) * pxPerSec;
-        if (x < labelColW - 40 || x > w + 80) continue;
+        const x = isHeldSustain ? receptorX : receptorX + (target - nowSec) * pxPerSec;
+        const remainingDur = isHeldSustain ? Math.max(0, target + n.durationSec - nowSec) : n.durationSec;
+        const pillW = Math.max(26, remainingDur * pxPerSec);
+        if (x + pillW < labelColW || x > w + 80) continue;
 
-        // Sustain tail
-        if (n.durationSec >= 0.4) {
-          const tailW = n.durationSec * pxPerSec;
+        const pillH = n.pitchBend === 'normal' ? laneH - 8 : (laneH - 8) * 0.5;
+        const pillY =
+          n.pitchBend === 'up'
+            ? laneIdx * laneH + 3
+            : n.pitchBend === 'down'
+              ? laneIdx * laneH + laneH * 0.5 + 1
+              : laneIdx * laneH + 4;
+
+        // Note Body + Illumination when actively held
+        ctx.save();
+        if (isHeldSustain) {
+          const pulse = 0.75 + 0.25 * Math.sin(nowPerf * 0.03);
+          ctx.shadowColor = '#f2c94c';
+          ctx.shadowBlur = 16 * pulse;
           ctx.fillStyle = meta.color;
-          ctx.globalAlpha = 0.4;
-          ctx.fillRect(x, cy - noteR * 0.5, tailW, noteR);
-          ctx.globalAlpha = 1;
+        } else {
+          ctx.fillStyle = meta.color;
         }
-
-        // Note circle
         ctx.beginPath();
-        ctx.arc(x, cy, noteR, 0, Math.PI * 2);
-        ctx.fillStyle = meta.color;
+        ctx.roundRect(x - 13, pillY, pillW, pillH, 7);
         ctx.fill();
-        ctx.lineWidth = 2.5;
-        ctx.strokeStyle = n.pitchBend === 'up' ? '#4ade80' : n.pitchBend === 'down' ? '#f87171' : '#ffffff';
+
+        ctx.lineWidth = isHeldSustain ? 3 : 2;
+        ctx.strokeStyle = isHeldSustain
+          ? '#ffffff'
+          : n.pitchBend === 'up'
+            ? '#4ade80'
+            : n.pitchBend === 'down'
+              ? '#f87171'
+              : 'rgba(255,255,255,0.65)';
         ctx.stroke();
+        ctx.restore();
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = `800 ${Math.max(9, Math.round(noteR * 0.72))}px Fredoka, sans-serif`;
+        ctx.font = `800 ${n.pitchBend === 'normal' ? 12 : 10}px Fredoka, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const label =
@@ -590,14 +900,42 @@ export class ArcadeMode {
             : n.pitchBend === 'down'
               ? `${meta.ootButton}↓`
               : meta.ootButton;
-        ctx.fillText(label, x, cy + 1);
+        ctx.fillText(label, x, pillY + pillH * 0.5);
       }
 
-      if (this.lastJudgementText && performance.now() - this.lastJudgementPerf < 550) {
+      // Render Popping Notes (1.0 -> 1.22 scale tween on hit)
+      this.poppingNotes = this.poppingNotes.filter((pn) => nowPerf - pn.hitPerf < 150);
+      for (const pn of this.poppingNotes) {
+        const prog = (nowPerf - pn.hitPerf) / 150;
+        const scale = 1 + 0.22 * Math.sin(prog * Math.PI * 0.5);
+        const alpha = 1 - prog;
+        const laneIdx = LANES_TOP_TO_BOTTOM.indexOf(pn.holeId);
+        const cy =
+          pn.pitchBend === 'up'
+            ? laneIdx * laneH + laneH * 0.28
+            : pn.pitchBend === 'down'
+              ? laneIdx * laneH + laneH * 0.72
+              : laneIdx * laneH + laneH * 0.5;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(receptorX, cy);
+        ctx.scale(scale, scale);
+        ctx.beginPath();
+        ctx.arc(0, 0, targetRadius, 0, Math.PI * 2);
+        ctx.fillStyle = pn.color;
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (this.lastJudgementText && nowPerf - this.lastJudgementPerf < 550) {
         ctx.fillStyle = this.lastJudgementColor;
-        ctx.font = '800 22px Fredoka, sans-serif';
+        ctx.font = '800 20px Fredoka, sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(this.lastJudgementText, receptorX + 26, 22);
+        ctx.fillText(this.lastJudgementText, receptorX + 26, 26);
       }
 
       ctx.restore();
@@ -622,6 +960,7 @@ export class ArcadeMode {
 
   private triggerGameOver(): void {
     this.stopLoop();
+    this.activeSustains.clear();
     this.setPhase('gameover');
     playGameOver();
     haptics.gameOver();
@@ -630,13 +969,15 @@ export class ArcadeMode {
 
   private finishStage(): void {
     this.stopLoop();
+    this.activeSustains.clear();
     this.setPhase('results');
     const result = calculateArcadeScore(this.counts);
+    const totalScore = result.score + this.sustainBonusScore;
     const correctNotes = this.counts.perfect + this.counts.great + this.counts.good;
     const missedNotes = this.counts.bad + this.counts.miss;
     const entry: ArcadeHighScore = {
       songId: this.selectedSong.id,
-      score: result.score,
+      score: totalScore,
       grade: result.grade,
       plate: result.plate,
       maxCombo: this.counts.maxCombo,
@@ -660,11 +1001,9 @@ export class ArcadeMode {
 
   private updateLiveHud(): void {
     const scoreEl = this.container.querySelector('#arcade-live-score');
-    const comboEl = this.container.querySelector('#arcade-live-combo');
     const lifeFill = this.container.querySelector<HTMLElement>('#arcade-life-fill');
     const res = calculateArcadeScore(this.counts);
-    if (scoreEl) scoreEl.textContent = res.score.toLocaleString();
-    if (comboEl) comboEl.textContent = `${this.currentCombo} COMBO`;
+    if (scoreEl) scoreEl.textContent = (res.score + this.sustainBonusScore).toLocaleString();
     if (lifeFill) {
       lifeFill.style.width = `${Math.round(this.lifeMeter)}%`;
       lifeFill.classList.toggle('is-danger', this.lifeMeter < 25);
@@ -700,7 +1039,6 @@ export class ArcadeMode {
     const missedNotes = hs?.missedNotes ?? 0;
     const bestScore = hs?.score ?? 0;
 
-    // Build roller window (up to 5 items centered on focusIdx)
     const rollerItems: Array<{ song: PartitureTrack; offset: number }> = [];
     for (let d = -2; d <= 2; d++) {
       if (songs.length === 0) break;
@@ -932,7 +1270,7 @@ export class ArcadeMode {
 
           <div class="arcade-stats-pills">
             <span class="stat-pill" id="arcade-live-score">0</span>
-            <span class="stat-pill combo-pill" id="arcade-live-combo">0 COMBO</span>
+            <button type="button" class="btn btn-secondary" id="btn-arcade-pause" title="Pause (ESC)">⏸ Pause</button>
             <button type="button" class="btn btn-secondary" id="btn-arcade-restart" title="Restart">↻</button>
             <button type="button" class="btn btn-danger" id="btn-arcade-quit">⏹ Quit</button>
           </div>
@@ -941,6 +1279,10 @@ export class ArcadeMode {
         <canvas id="arcade-highway-canvas" class="arcade-highway-canvas"></canvas>
       </div>
     `;
+
+    this.container.querySelector('#btn-arcade-pause')?.addEventListener('click', () => {
+      this.togglePause();
+    });
 
     this.container.querySelector('#btn-arcade-restart')?.addEventListener('click', () => {
       playUiClick();
@@ -985,6 +1327,7 @@ export class ArcadeMode {
 
   private renderResultsScreen(): void {
     const res = calculateArcadeScore(this.counts);
+    const totalScore = res.score + this.sustainBonusScore;
     const goodCount = this.counts.perfect + this.counts.great;
     const okayCount = this.counts.good;
     const badCount = this.counts.bad + this.counts.miss;
@@ -1008,7 +1351,7 @@ export class ArcadeMode {
             <div class="results-grade-badge">${res.grade}</div>
             <div class="results-score-box">
               <span class="score-caption">SCORE</span>
-              <strong class="results-score">${res.score.toLocaleString()}</strong>
+              <strong class="results-score">${totalScore.toLocaleString()}</strong>
             </div>
           </div>
 

@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+import { CSS3DObject, CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js';
 import { HOLE_MAP, HoleId, KeyMapping, OCARINA_HOLES, PitchBend } from '../types';
 import { formatKeyCode } from '../storage/persistence';
 
@@ -59,11 +61,39 @@ export class OcarinaSvgController {
   private pitchBend: PitchBend = 'normal';
   private activePointers = new Map<number, HoleId | 'blow' | 'pitch-up' | 'pitch-down'>();
 
+  // Three.js CSS3DRenderer 3D scene state
+  private scene3d: THREE.Scene | null = null;
+  private camera3d: THREE.PerspectiveCamera | null = null;
+  private renderer3d: CSS3DRenderer | null = null;
+  private ocarinaObj3d: CSS3DObject | null = null;
+  private raf3d: number | null = null;
+  private resizeObs: ResizeObserver | null = null;
+  private targetRotX = 0.06;
+  private targetRotY = 0;
+  private missFlickUntil = 0;
+
   constructor(container: HTMLElement, keyMapping: KeyMapping, callbacks: OcarinaSvgCallbacks) {
     this.container = container;
     this.keyMapping = keyMapping;
     this.callbacks = callbacks;
     this.render();
+  }
+
+  destroy(): void {
+    this.cleanup3d();
+  }
+
+  private cleanup3d(): void {
+    if (this.raf3d !== null) {
+      cancelAnimationFrame(this.raf3d);
+      this.raf3d = null;
+    }
+    this.resizeObs?.disconnect();
+    this.resizeObs = null;
+    this.renderer3d = null;
+    this.scene3d = null;
+    this.camera3d = null;
+    this.ocarinaObj3d = null;
   }
 
   setKeyMapping(mapping: KeyMapping): void {
@@ -91,6 +121,13 @@ export class OcarinaSvgController {
   setZoomed(zoomed: boolean): void {
     const wrapper = this.container.querySelector('.ocarina-svg-wrapper');
     wrapper?.classList.toggle('is-zoomed', zoomed);
+  }
+
+  /**
+   * Triggers a side-to-side 3D axis vibration/flick when the player misses notes in Arcade Mode.
+   */
+  triggerMissFlick(): void {
+    this.missFlickUntil = performance.now() + 340;
   }
 
   setHoleActive(holeId: HoleId, active: boolean): void {
@@ -141,10 +178,10 @@ export class OcarinaSvgController {
   }
 
   render(): void {
+    this.cleanup3d();
     const showBadges = !this.hideKeyBadges && !isTouchPrimaryDevice();
     const t = this.theme;
 
-    // Ergonomic 5-hole placement along the curved transverse ocarina body
     const holePositions: Record<HoleId, { cx: number; cy: number; r: number }> = {
       'hole-a': { cx: 248, cy: 222, r: 24 },
       'hole-down': { cx: 320, cy: 242, r: 22 },
@@ -222,21 +259,21 @@ export class OcarinaSvgController {
         <path d="M 442 158 C 474 170, 494 192, 496 218"
               stroke="rgba(255,255,255,0.2)" stroke-width="6" stroke-linecap="round" fill="none" />
 
-        <!-- Decorative Small Acoustic Sub-Holes (authentic transverse ocarina look) -->
+        <!-- Decorative Small Acoustic Sub-Holes -->
         <circle cx="176" cy="222" r="8" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.8" opacity="0.85" />
         <circle cx="446" cy="238" r="9" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.8" opacity="0.85" />
         <circle cx="468" cy="206" r="7.5" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.8" opacity="0.85" />
 
-        <!-- 2 Pitch-Bend Control Buttons on Ocarina Layout (Up / Down) -->
+        <!-- 2 Pitch-Bend Control Buttons on RIGHT Side of Ocarina -->
         <g class="ocarina-pitch-btn ${this.pitchBend === 'up' ? 'is-active' : ''}" data-pitch="up" role="button" tabindex="0" aria-label="Pitch Bend Up (+1 semitone)">
-          <rect x="28" y="136" width="54" height="44" rx="12" fill="#0b1633" stroke="#4ade80" stroke-width="2.5" />
-          <text x="55" y="156" text-anchor="middle" fill="#4ade80" font-size="14" font-weight="800">▲ +1</text>
-          <text x="55" y="172" text-anchor="middle" fill="#a6b4d0" font-size="9.5" font-weight="700">${showBadges ? formatKeyCode(this.keyMapping.pitchUp) : 'PITCH'}</text>
+          <rect x="556" y="136" width="56" height="44" rx="12" fill="#0b1633" stroke="#4ade80" stroke-width="2.5" />
+          <text x="584" y="156" text-anchor="middle" fill="#4ade80" font-size="14" font-weight="800">▲ +1</text>
+          <text x="584" y="172" text-anchor="middle" fill="#a6b4d0" font-size="9.5" font-weight="700">${showBadges ? formatKeyCode(this.keyMapping.pitchUp) : 'PITCH'}</text>
         </g>
         <g class="ocarina-pitch-btn ${this.pitchBend === 'down' ? 'is-active' : ''}" data-pitch="down" role="button" tabindex="0" aria-label="Pitch Bend Down (-1 semitone)">
-          <rect x="28" y="190" width="54" height="44" rx="12" fill="#0b1633" stroke="#f87171" stroke-width="2.5" />
-          <text x="55" y="210" text-anchor="middle" fill="#f87171" font-size="14" font-weight="800">▼ -1</text>
-          <text x="55" y="226" text-anchor="middle" fill="#a6b4d0" font-size="9.5" font-weight="700">${showBadges ? formatKeyCode(this.keyMapping.pitchDown) : 'PITCH'}</text>
+          <rect x="556" y="190" width="56" height="44" rx="12" fill="#0b1633" stroke="#f87171" stroke-width="2.5" />
+          <text x="584" y="210" text-anchor="middle" fill="#f87171" font-size="14" font-weight="800">▼ -1</text>
+          <text x="584" y="226" text-anchor="middle" fill="#a6b4d0" font-size="9.5" font-weight="700">${showBadges ? formatKeyCode(this.keyMapping.pitchDown) : 'PITCH'}</text>
         </g>
 
         <!-- 5 Interactive Musical Holes -->
@@ -280,7 +317,7 @@ export class OcarinaSvgController {
           <span class="ocarina-skin-pill" id="ocarina-skin-pill">${this.customSvg ? this.customSkinName : t.name}</span>
         </div>
 
-        <div class="ocarina-svg-wrapper">
+        <div class="ocarina-svg-wrapper" id="ocarina-3d-host">
           ${this.customSvg ? this.customSvg : builtInSvg}
         </div>
 
@@ -294,7 +331,97 @@ export class OcarinaSvgController {
       </div>
     `;
 
+    this.init3dScene();
     this.bindInteractions();
+  }
+
+  private init3dScene(): void {
+    const host = this.container.querySelector<HTMLElement>('#ocarina-3d-host');
+    const svg = host?.querySelector<SVGSVGElement>('.ocarina-svg');
+    if (!host || !svg) return;
+
+    const w = Math.max(300, host.clientWidth || 560);
+    const h = Math.max(180, host.clientHeight || Math.round(w * (340 / 640)));
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(32, w / h, 1, 3000);
+    const dist = (h / 2) / Math.tan((32 * Math.PI) / 360);
+    camera.position.set(0, 0, dist);
+
+    const renderer = new CSS3DRenderer();
+    renderer.setSize(w, h);
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.display = 'block';
+
+    // Wrap the interactive SVG inside a CSS3DObject preserving exact size & aspect ratio
+    const card = document.createElement('div');
+    card.style.width = `${w}px`;
+    card.style.height = `${h}px`;
+    card.style.display = 'flex';
+    card.style.alignItems = 'center';
+    card.style.justifyContent = 'center';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    card.appendChild(svg);
+
+    const obj = new CSS3DObject(card);
+    scene.add(obj);
+    host.innerHTML = '';
+    host.appendChild(renderer.domElement);
+
+    this.scene3d = scene;
+    this.camera3d = camera;
+    this.renderer3d = renderer;
+    this.ocarinaObj3d = obj;
+
+    host.addEventListener('pointermove', (e) => {
+      const r = host.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      const nx = (e.clientX - r.left) / r.width - 0.5;
+      const ny = (e.clientY - r.top) / r.height - 0.5;
+      this.targetRotY = nx * 0.16;
+      this.targetRotX = 0.06 - ny * 0.12;
+    });
+
+    host.addEventListener('pointerleave', () => {
+      this.targetRotX = 0.06;
+      this.targetRotY = 0;
+    });
+
+    this.resizeObs = new ResizeObserver(() => {
+      if (!this.renderer3d || !this.camera3d || !this.ocarinaObj3d) return;
+      const nw = Math.max(260, host.clientWidth);
+      const nh = Math.max(160, host.clientHeight || Math.round(nw * (340 / 640)));
+      this.renderer3d.setSize(nw, nh);
+      this.camera3d.aspect = nw / nh;
+      this.camera3d.position.z = (nh / 2) / Math.tan((32 * Math.PI) / 360);
+      this.camera3d.updateProjectionMatrix();
+      card.style.width = `${nw}px`;
+      card.style.height = `${nh}px`;
+    });
+    this.resizeObs.observe(host);
+
+    const animate = () => {
+      if (!this.renderer3d || !this.scene3d || !this.camera3d || !this.ocarinaObj3d) return;
+      const now = performance.now();
+      let flickY = 0;
+      let flickZ = 0;
+      if (now < this.missFlickUntil) {
+        const rem = (this.missFlickUntil - now) / 340;
+        const osc = Math.sin(now * 0.065);
+        flickY = osc * 0.28 * rem;
+        flickZ = osc * 0.09 * rem;
+      }
+
+      this.ocarinaObj3d.rotation.x += (this.targetRotX - this.ocarinaObj3d.rotation.x) * 0.14;
+      this.ocarinaObj3d.rotation.y += (this.targetRotY + flickY - this.ocarinaObj3d.rotation.y) * 0.22;
+      this.ocarinaObj3d.rotation.z += (flickZ - this.ocarinaObj3d.rotation.z) * 0.25;
+
+      this.renderer3d.render(this.scene3d, this.camera3d);
+      this.raf3d = requestAnimationFrame(animate);
+    };
+    this.raf3d = requestAnimationFrame(animate);
   }
 
   private bindInteractions(): void {

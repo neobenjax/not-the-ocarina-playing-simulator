@@ -2433,6 +2433,141 @@ dialog.game-dialog-wide {
   filter: drop-shadow(0 0 8px rgba(242, 201, 76, 0.8));
 }
 
+/* =========================================================
+   ARCADE PAUSE, COMBO BANNER & JUICE ANIMATIONS
+   ========================================================= */
+.arcade-pause-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 11, 24, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.arcade-pause-overlay.is-active {
+  display: flex;
+}
+
+.pause-card {
+  background: rgba(14, 23, 48, 0.95);
+  border: 2.5px solid var(--oc-gold);
+  border-radius: 22px;
+  padding: 1.6rem 2.2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.65);
+  min-width: 280px;
+}
+
+.pause-card h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  color: var(--oc-gold);
+}
+
+.pause-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.arcade-combo-banner {
+  position: absolute;
+  top: 0.45rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  display: none;
+  align-items: baseline;
+  gap: 0.4rem;
+  pointer-events: none;
+  padding: 0.2rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(7, 11, 24, 0.75);
+  border: 1.5px solid rgba(242, 201, 76, 0.45);
+}
+
+.arcade-combo-banner.is-visible {
+  display: inline-flex;
+}
+
+.arcade-combo-banner .combo-num {
+  font-family: var(--font-display);
+  font-size: clamp(1.45rem, 3.5vw, 2.2rem);
+  font-weight: 800;
+  color: var(--oc-gold);
+  text-shadow: 0 2px 12px rgba(242, 201, 76, 0.6);
+}
+
+.arcade-combo-banner .combo-word {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #ffffff;
+}
+
+.arcade-combo-banner.is-hit-pop {
+  animation: comboHitPop 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.arcade-combo-banner.is-milestone-pop {
+  border-color: #fde047;
+  box-shadow: 0 0 28px rgba(242, 201, 76, 0.75);
+  animation: comboMilestonePop 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.arcade-combo-banner.is-combo-break {
+  border-color: #ef4444;
+  animation: comboBreakShatter 0.42s ease-out forwards;
+}
+
+.arcade-combo-banner.is-combo-break .combo-num {
+  color: #ef4444;
+}
+
+@keyframes comboHitPop {
+  0% { transform: translateX(-50%) scale(1.28); }
+  100% { transform: translateX(-50%) scale(1); }
+}
+
+@keyframes comboMilestonePop {
+  0% { transform: translateX(-50%) scale(1); }
+  45% { transform: translateX(-50%) scale(1.55); }
+  100% { transform: translateX(-50%) scale(1.05); }
+}
+
+@keyframes comboBreakShatter {
+  0% { transform: translateX(-50%) scale(1) rotate(0deg); opacity: 1; }
+  25% { transform: translateX(calc(-50% - 8px)) scale(1.08) rotate(-5deg); }
+  50% { transform: translateX(calc(-50% + 8px)) scale(0.95) rotate(5deg); }
+  100% { transform: translateX(-50%) scale(0.45) translateY(14px); opacity: 0; }
+}
+
+.arcade-ingame-top.is-juice-shake {
+  animation: juiceShake 0.11s ease-out;
+}
+
+@keyframes juiceShake {
+  0% { transform: translate(0, 0); }
+  35% { transform: translate(-2px, 1.5px); }
+  70% { transform: translate(2px, -1px); }
+  100% { transform: translate(0, 0); }
+}
+
+.arcade-ocarina-mount .ocarina-svg-wrapper {
+  aspect-ratio: 640 / 340;
+  width: min(560px, 88vw);
+  height: auto;
+  max-height: 44dvh;
+}
+
 .dock-btn {
   padding: 0.32rem 0.55rem;
   font-size: 0.78rem;

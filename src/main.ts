@@ -102,6 +102,7 @@ class OcarinaApp {
     this.freePlayComposer = null;
     this.arcadeMode?.destroy();
     this.arcadeMode = null;
+    this.ocarinaCtrl?.destroy();
     this.ocarinaCtrl = null;
     this.activeScreen = screen;
     this.applyAudioAndHaptics();
@@ -260,9 +261,11 @@ class OcarinaApp {
         <section id="mode-panel" class="arcade-mode-panel"></section>
         <section id="ocarina-stage" class="ocarina-stage arcade-ingame-bottom">
           <img src="/not-the-ocarina-playing-simulator/assets/arcade-stage-bg.jpg" alt="" class="arcade-stage-bg-img" />
+          <div id="arcade-combo-banner" class="arcade-combo-banner" aria-live="polite"></div>
           <div id="ocarina-stage-mount" class="arcade-ocarina-mount"></div>
         </section>
         <div id="arcade-countdown-overlay" class="arcade-countdown-overlay" aria-live="assertive">3</div>
+        <div id="arcade-pause-overlay" class="arcade-pause-overlay" aria-modal="true" role="dialog" aria-label="Game Paused"></div>
       </div>
       <div id="toast-banner" class="toast-banner" role="status" aria-live="polite"></div>
     `;
@@ -297,6 +300,9 @@ class OcarinaApp {
       },
       onZoomOcarina: (zoomed) => {
         this.ocarinaCtrl?.setZoomed(zoomed);
+      },
+      onMissFlick: () => {
+        this.ocarinaCtrl?.triggerMissFlick();
       },
       onBackToMenu: () => this.navigateTo('title'),
     });
@@ -424,6 +430,12 @@ class OcarinaApp {
         if (this.arcadeMode?.handleSelectKeyDown(e)) return;
       }
 
+      if (this.activeScreen === 'arcade' && this.arcadePhase === 'playing' && e.key === 'Escape') {
+        e.preventDefault();
+        this.arcadeMode?.togglePause();
+        return;
+      }
+
       if (this.activeScreen === 'composer') {
         if (e.code === 'Delete' || e.key === 'Delete') {
           e.preventDefault();
@@ -526,6 +538,9 @@ class OcarinaApp {
   private handleHoleUp(holeId: HoleId): void {
     this.heldHoles = this.heldHoles.filter((id) => id !== holeId);
     this.ocarinaCtrl?.setHoleActive(holeId, false);
+    if (this.activeScreen === 'arcade') {
+      this.arcadeMode?.onPlayerRelease(holeId);
+    }
     this.freePlayComposer?.onLiveNoteEnd(holeId);
     ocarinaSynth.stopVoice(holeId);
   }

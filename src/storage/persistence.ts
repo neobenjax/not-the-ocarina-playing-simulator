@@ -52,7 +52,9 @@ export function saveKeyMapping(mapping: KeyMapping): void {
 }
 
 export function loadSelectedSkinId(): string {
-  return localStorage.getItem(KEYS.skinId) || 'ocarina-of-time';
+  const id = localStorage.getItem(KEYS.skinId);
+  if (!id || id === 'ocarina-of-time') return 'royal-sapphire';
+  return id;
 }
 
 export function saveSelectedSkinId(skinId: string): void {
@@ -76,13 +78,13 @@ export function loadPlaylists(): Playlist[] {
   if (existing && existing.length > 0) return existing;
   const defaultPlaylists: Playlist[] = [
     {
-      id: 'pl-hyrule-favorites',
-      name: 'Hyrule Compositions',
+      id: 'pl-starter-compositions',
+      name: 'My Compositions',
       tracks: [
         {
-          id: 'trk-demo-lullaby',
-          title: 'My First Lullaby',
-          artist: 'Hero of Time',
+          id: 'trk-demo-snooze',
+          title: 'My First Waltz',
+          artist: 'Wandering Bard',
           bpm: 100,
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -113,10 +115,13 @@ export function loadHighScores(): Record<string, ArcadeHighScore> {
 export function saveHighScore(entry: ArcadeHighScore): void {
   const all = loadHighScores();
   const prev = all[entry.songId];
-  if (!prev || entry.score > prev.score) {
-    all[entry.songId] = entry;
-    safeWrite(KEYS.highScores, all);
+  const playCount = (prev?.playCount ?? 0) + 1;
+  if (!prev || entry.score >= prev.score) {
+    all[entry.songId] = { ...entry, playCount };
+  } else {
+    all[entry.songId] = { ...prev, playCount };
   }
+  safeWrite(KEYS.highScores, all);
 }
 
 export function formatKeyCode(code: string): string {
@@ -125,5 +130,7 @@ export function formatKeyCode(code: string): string {
   if (code.startsWith('Digit')) return code.slice(5);
   if (code.startsWith('Arrow')) return code.slice(5).toUpperCase();
   if (code === 'ShiftLeft' || code === 'ShiftRight') return 'SHIFT';
+  if (code === 'BracketLeft') return '[';
+  if (code === 'BracketRight') return ']';
   return code.toUpperCase();
 }

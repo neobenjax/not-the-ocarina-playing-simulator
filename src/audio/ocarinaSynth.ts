@@ -1,10 +1,11 @@
 /**
- * Procedural Web Audio Ocarina Synthesizer
+ * Procedural Polyphonic Web Audio Ocarina Synthesizer
  * Produces an authentic ceramic transverse ocarina tone with:
  * - Warm sine + soft triangle harmonic blend
  * - Bandpass-filtered breath airflow noise
  * - Gentle 5.2 Hz vibrato LFO
- * - Distorted miss tone for Mode 2 rhythm errors
+ * - Polyphonic voice mixing so multiple simultaneous holes blend naturally
+ * - Distorted miss tone for rhythm errors
  */
 
 let sharedAudioCtx: AudioContext | null = null;
@@ -20,18 +21,22 @@ export function getSharedAudioContext(): AudioContext {
   return sharedAudioCtx;
 }
 
+interface ActiveVoice {
+  osc1: OscillatorNode;
+  osc2: OscillatorNode;
+  lfo: OscillatorNode;
+  voiceGain: GainNode;
+  breathSrc: AudioBufferSourceNode;
+  breathGain: GainNode;
+  frequency: number;
+}
+
 class OcarinaSynth {
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
-  private activeOsc1: OscillatorNode | null = null;
-  private activeOsc2: OscillatorNode | null = null;
-  private activeLfo: OscillatorNode | null = null;
-  private activeVoiceGain: GainNode | null = null;
-  private activeBreathSource: AudioBufferSourceNode | null = null;
-  private activeBreathGain: GainNode | null = null;
+  private voices = new Map<string, ActiveVoice>();
   private noiseBuffer: AudioBuffer | null = null;
   private volume = 0.85;
-  private currentFreq: number | null = null;
 
   private ensureGraph(): { ctx: AudioContext; out: AudioNode } {
     const ctx = getSharedAudioContext();
@@ -68,41 +73,45 @@ class OcarinaSynth {
     }
   }
 
-  startNote(frequency: number, gainScale = 1.0): void {
+  /**
+   * Start or update a polyphonic voice for a specific hole/key.
+   * Multiple voices blend through the shared compressor to form harmonies/chords.
+   */
+  startVoice(voiceId: string, frequency: number, gainScale = 1.0): void {
     const { ctx, out } = this.ensureGraph();
     const now = ctx.currentTime;
+    const existing = this.voices.get(voiceId);
 
-    // If a note is already sounding, glide smoothly to the new pitch
-    if (this.activeOsc1 && this.activeOsc2 && this.activeVoiceGain) {
-      this.activeOsc1.frequency.setTargetAtTime(frequency, now, 0.012);
-      this.activeOsc2.frequency.setTargetAtTime(frequency, now, 0.012);
-      this.activeVoiceGain.gain.setTargetAtTime(0.36 * gainScale, now, 0.02);
-      this.currentFreq = frequency;
+    // Scale gain slightly down when multiple voices are active to prevent clipping
+    const polyScale = gainScale * (this.voices.size >= 2 ? 0.75 : 1.0);
+
+    if (existing) {
+      existing.osc1.frequency.setTargetAtTime(frequency, now, 0.012);
+      existing.osc2.frequency.setTargetAtTime(frequency, now, 0.012);
+      existing.voiceGain.gain.setTargetAtTime(0.32 * polyScale, now, 0.02);
+      existing.frequency = frequency;
       return;
     }
 
     const voiceGain = ctx.createGain();
     voiceGain.gain.setValueAtTime(0.0001, now);
-    voiceGain.gain.linearRampToValueAtTime(0.36 * gainScale, now + 0.032);
+    voiceGain.gain.linearRampToValueAtTime(0.32 * polyScale, now + 0.032);
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(2600, now);
     filter.Q.value = 1.1;
 
-    // Primary pure ceramic sine
     const osc1 = ctx.createOscillator();
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(frequency, now);
 
-    // Subtle warm harmonic triangle
     const osc2 = ctx.createOscillator();
     osc2.type = 'triangle';
     osc2.frequency.setValueAtTime(frequency, now);
     const osc2Gain = ctx.createGain();
     osc2Gain.gain.value = 0.16;
 
-    // Gentle vibrato LFO
     const lfo = ctx.createOscillator();
     lfo.type = 'sine';
     lfo.frequency.setValueAtTime(5.2, now);
@@ -113,7 +122,6 @@ class OcarinaSynth {
     lfoGain.connect(osc1.frequency);
     lfoGain.connect(osc2.frequency);
 
-    // Subtle breath noise
     const breathSrc = ctx.createBufferSource();
     breathSrc.buffer = this.noiseBuffer!;
     breathSrc.loop = true;
@@ -123,7 +131,7 @@ class OcarinaSynth {
     breathFilter.Q.value = 2.5;
     const breathGain = ctx.createGain();
     breathGain.gain.setValueAtTime(0.0001, now);
-    breathGain.gain.linearRampToValueAtTime(0.055 * gainScale, now + 0.03);
+    breathGain.gain.linearRampToValueAtTime(0.045 * polyScale, now + 0.03);
 
     osc1.connect(filter);
     osc2.connect(osc2Gain);
@@ -140,50 +148,52 @@ class OcarinaSynth {
     lfo.start(now);
     breathSrc.start(now);
 
-    this.activeOsc1 = osc1;
-    this.activeOsc2 = osc2;
-    this.activeLfo = lfo;
-    this.activeVoiceGain = voiceGain;
-    this.activeBreathSource = breathSrc;
-    this.activeBreathGain = breathGain;
-    this.currentFreq = frequency;
+    this.voices.set(voiceId, {
+      osc1,
+      osc2,
+      lfo,
+      voiceGain,
+      breathSrc,
+      breathGain,
+      frequency,
+    });
   }
 
-  stopNote(): void {
-    if (!sharedAudioCtx || !this.activeVoiceGain) return;
+  stopVoice(voiceId: string): void {
+    const voice = this.voices.get(voiceId);
+    if (!voice || !sharedAudioCtx) return;
+    this.voices.delete(voiceId);
+
     const ctx = sharedAudioCtx;
     const now = ctx.currentTime;
 
-    const osc1 = this.activeOsc1;
-    const osc2 = this.activeOsc2;
-    const lfo = this.activeLfo;
-    const voiceGain = this.activeVoiceGain;
-    const breathSrc = this.activeBreathSource;
-    const breathGain = this.activeBreathGain;
+    voice.voiceGain.gain.cancelScheduledValues(now);
+    voice.voiceGain.gain.setValueAtTime(Math.max(0.0001, voice.voiceGain.gain.value), now);
+    voice.voiceGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
 
-    this.activeOsc1 = null;
-    this.activeOsc2 = null;
-    this.activeLfo = null;
-    this.activeVoiceGain = null;
-    this.activeBreathSource = null;
-    this.activeBreathGain = null;
-    this.currentFreq = null;
-
-    voiceGain.gain.cancelScheduledValues(now);
-    voiceGain.gain.setValueAtTime(Math.max(0.0001, voiceGain.gain.value), now);
-    voiceGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
-
-    if (breathGain) {
-      breathGain.gain.cancelScheduledValues(now);
-      breathGain.gain.setValueAtTime(Math.max(0.0001, breathGain.gain.value), now);
-      breathGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
-    }
+    voice.breathGain.gain.cancelScheduledValues(now);
+    voice.breathGain.gain.setValueAtTime(Math.max(0.0001, voice.breathGain.gain.value), now);
+    voice.breathGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
 
     const stopAt = now + 0.11;
-    osc1?.stop(stopAt);
-    osc2?.stop(stopAt);
-    lfo?.stop(stopAt);
-    breathSrc?.stop(stopAt);
+    voice.osc1.stop(stopAt);
+    voice.osc2.stop(stopAt);
+    voice.lfo.stop(stopAt);
+    voice.breathSrc.stop(stopAt);
+  }
+
+  stopAllVoices(): void {
+    for (const id of Array.from(this.voices.keys())) {
+      this.stopVoice(id);
+    }
+  }
+
+  startNote(frequency: number, gainScale = 1.0): void {
+    this.startVoice('default', frequency, gainScale);
+  }
+
+  stopNote(): void {
+    this.stopVoice('default');
   }
 
   /**
@@ -222,7 +232,7 @@ class OcarinaSynth {
   }
 
   /**
-   * Distorted note noise for Mode 2 misses
+   * Distorted note noise for rhythm misses
    */
   playDistortedMiss(frequency: number): void {
     const { ctx, out } = this.ensureGraph();
@@ -253,8 +263,8 @@ class OcarinaSynth {
     osc.stop(now + 0.24);
   }
 
-  getCurrentFreq(): number | null {
-    return this.currentFreq;
+  getActiveCount(): number {
+    return this.voices.size;
   }
 }
 

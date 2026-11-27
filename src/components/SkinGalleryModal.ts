@@ -87,7 +87,7 @@ export class SkinGalleryModal {
                   class="skin-card ${this.selectedSkinId === skin.id ? 'is-selected' : ''}"
                   data-select-skin="${skin.id}">
             <div class="skin-swatch" style="background:linear-gradient(135deg, ${skin.bodyPrimary}, ${skin.bodySecondary}); border-color:${skin.bandAccent};">
-              <span class="skin-triforce" style="color:${skin.triforceColor}">▲</span>
+              <span class="skin-emblem" style="color:${skin.emblemColor}">✦</span>
             </div>
             <div class="skin-info">
               <strong>${skin.name}</strong>

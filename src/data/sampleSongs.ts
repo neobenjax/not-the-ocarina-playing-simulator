@@ -1,8 +1,8 @@
 import { HoleId, PartitureTrack } from '../types';
 
-export interface ZeldaSongChart extends PartitureTrack {
+export interface SampleSongChart extends PartitureTrack {
   subtitle: string;
-  level: number;
+  category: string;
 }
 
 function makeNotes(
@@ -17,17 +17,17 @@ function makeNotes(
   }));
 }
 
-export const ZELDA_SONGS: ZeldaSongChart[] = [
+export const SAMPLE_SONGS: SampleSongChart[] = [
   {
-    id: 'zelda-lullaby',
-    title: "Zelda's Lullaby",
-    artist: 'Koji Kondo · Hyrule Royal Family',
+    id: 'royal-snooze-waltz',
+    title: 'Princess Nap Time',
+    artist: 'Court Sleepyhead · Castle Bedroom',
     subtitle: '3/4 Waltz · Gentle Starter',
+    category: 'Classics',
     bpm: 92,
-    level: 2,
     createdAt: 0,
     updatedAt: 0,
-    notes: makeNotes('zelda-lullaby', [
+    notes: makeNotes('royal-snooze-waltz', [
       ['hole-left', 0, 1.5], ['hole-up', 1.5, 0.5], ['hole-right', 2, 1.5],
       ['hole-left', 4, 1.5], ['hole-up', 5.5, 0.5], ['hole-right', 6, 1.5],
       ['hole-left', 8, 1.5], ['hole-up', 9.5, 0.5], ['hole-right', 10, 1.0], ['hole-up', 11, 1.0],
@@ -36,15 +36,15 @@ export const ZELDA_SONGS: ZeldaSongChart[] = [
     ]),
   },
   {
-    id: 'song-of-storms',
-    title: 'Song of Storms',
-    artist: 'Koji Kondo · Kakariko Windmill',
+    id: 'mild-drizzle-forecast',
+    title: 'Windmill Weather Forecast',
+    artist: 'Grumpy Musician · Spinny Tower',
     subtitle: 'Energetic Triple-Meter Whirlwind',
+    category: 'Upbeat',
     bpm: 136,
-    level: 6,
     createdAt: 0,
     updatedAt: 0,
-    notes: makeNotes('song-of-storms', [
+    notes: makeNotes('mild-drizzle-forecast', [
       ['hole-a', 0, 0.5], ['hole-down', 0.5, 0.5], ['hole-up', 1, 1.5],
       ['hole-a', 3, 0.5], ['hole-down', 3.5, 0.5], ['hole-up', 4, 1.5],
       ['hole-up', 6, 0.5], ['hole-left', 6.5, 0.5], ['hole-up', 7, 0.5], ['hole-left', 7.5, 0.5],
@@ -54,15 +54,15 @@ export const ZELDA_SONGS: ZeldaSongChart[] = [
     ]),
   },
   {
-    id: 'sarias-song',
-    title: "Saria's Song (Lost Woods)",
-    artist: 'Koji Kondo · Kokiri Forest',
+    id: 'gps-lost-woods',
+    title: 'Bestie Jam (GPS Lost)',
+    artist: 'Treehouse DJ · Foggy Pines',
     subtitle: 'Bouncy Syncopated Woods Groove',
+    category: 'Upbeat',
     bpm: 140,
-    level: 7,
     createdAt: 0,
     updatedAt: 0,
-    notes: makeNotes('sarias-song', [
+    notes: makeNotes('gps-lost-woods', [
       ['hole-down', 0, 0.5], ['hole-right', 0.5, 0.5], ['hole-left', 1, 1.0],
       ['hole-down', 2, 0.5], ['hole-right', 2.5, 0.5], ['hole-left', 3, 1.0],
       ['hole-down', 4, 0.5], ['hole-right', 4.5, 0.5], ['hole-left', 5, 0.5], ['hole-up', 5.5, 0.5],
@@ -73,15 +73,15 @@ export const ZELDA_SONGS: ZeldaSongChart[] = [
     ]),
   },
   {
-    id: 'song-of-time',
-    title: 'Song of Time',
-    artist: 'Koji Kondo · Temple of Time',
-    subtitle: 'Solemn Sacred Door Motif',
+    id: 'clock-in-anthem',
+    title: 'Overdue Deadline Tune',
+    artist: 'Chrono Intern · Bell Tower',
+    subtitle: 'Solemn Sacred Alarm Motif',
+    category: 'Classics',
     bpm: 96,
-    level: 3,
     createdAt: 0,
     updatedAt: 0,
-    notes: makeNotes('song-of-time', [
+    notes: makeNotes('clock-in-anthem', [
       ['hole-right', 0, 1.0], ['hole-a', 1, 1.5], ['hole-down', 2.5, 0.5],
       ['hole-right', 3, 1.0], ['hole-a', 4, 1.5], ['hole-down', 5.5, 0.5],
       ['hole-right', 6, 0.5], ['hole-left', 6.5, 0.5], ['hole-right', 7, 1.0],
@@ -90,15 +90,15 @@ export const ZELDA_SONGS: ZeldaSongChart[] = [
     ]),
   },
   {
-    id: 'eponas-song',
-    title: "Epona's Song",
-    artist: 'Koji Kondo · Lon Lon Ranch',
+    id: 'pony-express-ballad',
+    title: "Horse Girl's Whistle",
+    artist: 'Barn Band · Carrot Ranch',
     subtitle: 'Warm Prairie Melody',
+    category: 'Classics',
     bpm: 108,
-    level: 3,
     createdAt: 0,
     updatedAt: 0,
-    notes: makeNotes('eponas-song', [
+    notes: makeNotes('pony-express-ballad', [
       ['hole-up', 0, 0.5], ['hole-left', 0.5, 0.5], ['hole-right', 1, 2.0],
       ['hole-up', 3, 0.5], ['hole-left', 3.5, 0.5], ['hole-right', 4, 2.0],
       ['hole-up', 6, 0.5], ['hole-left', 6.5, 0.5], ['hole-right', 7, 1.0], ['hole-left', 8, 1.0],
@@ -106,15 +106,15 @@ export const ZELDA_SONGS: ZeldaSongChart[] = [
     ]),
   },
   {
-    id: 'suns-song',
-    title: "Sun's Song",
-    artist: 'Koji Kondo · Royal Tomb',
+    id: 'daylight-savings-tune',
+    title: 'Daylight Savings Song',
+    artist: 'Solar Guard · Sundial Plaza',
     subtitle: 'Crisp Dawn-to-Dusk Arpeggio',
+    category: 'Classics',
     bpm: 112,
-    level: 4,
     createdAt: 0,
     updatedAt: 0,
-    notes: makeNotes('suns-song', [
+    notes: makeNotes('daylight-savings-tune', [
       ['hole-right', 0, 0.5], ['hole-down', 0.5, 0.5], ['hole-up', 1, 1.5],
       ['hole-right', 3, 0.5], ['hole-down', 3.5, 0.5], ['hole-up', 4, 1.5],
       ['hole-a', 6, 0.5], ['hole-down', 6.5, 0.5], ['hole-right', 7, 0.5], ['hole-left', 7.5, 0.5],
@@ -122,31 +122,32 @@ export const ZELDA_SONGS: ZeldaSongChart[] = [
     ]),
   },
   {
-    id: 'bolero-of-fire',
-    title: 'Bolero of Fire',
-    artist: 'Koji Kondo · Death Mountain Crater',
-    subtitle: 'Passionate Flamenco Rhythm',
+    id: 'spicy-taco-tango',
+    title: 'Spicy Taco Tango',
+    artist: 'Chef Magma · Volcano Sauna',
+    subtitle: 'Passionate Flamenco Rhythm + Chords',
+    category: 'Upbeat',
     bpm: 116,
-    level: 6,
     createdAt: 0,
     updatedAt: 0,
-    notes: makeNotes('bolero-of-fire', [
+    notes: makeNotes('spicy-taco-tango', [
       ['hole-down', 0, 0.5], ['hole-a', 0.5, 0.5], ['hole-down', 1, 0.5], ['hole-a', 1.5, 0.5],
       ['hole-right', 2, 0.5], ['hole-down', 2.5, 0.5], ['hole-right', 3, 0.5], ['hole-down', 3.5, 0.5],
       ['hole-right', 4, 1.0], ['hole-left', 5, 1.0], ['hole-up', 6, 1.5],
-      ['hole-left', 8, 0.5], ['hole-right', 8.5, 0.5], ['hole-down', 9, 0.5], ['hole-a', 9.5, 1.5],
+      ['hole-left', 8, 0.5], ['hole-right', 8.5, 0.5], ['hole-down', 9, 0.5],
+      ['hole-a', 9.5, 1.5], ['hole-right', 9.5, 1.5],
     ]),
   },
   {
-    id: 'serenade-of-water',
-    title: 'Serenade of Water',
-    artist: 'Koji Kondo · Ice Cavern',
+    id: 'hydration-reminder-waltz',
+    title: 'Hydration Reminder Waltz',
+    artist: 'Aqua Bard · Chilly Fountain',
     subtitle: 'Flowing Crystal Ballad',
+    category: 'Chill',
     bpm: 88,
-    level: 4,
     createdAt: 0,
     updatedAt: 0,
-    notes: makeNotes('serenade-of-water', [
+    notes: makeNotes('hydration-reminder-waltz', [
       ['hole-a', 0, 1.0], ['hole-down', 1, 1.0], ['hole-right', 2, 1.0],
       ['hole-right', 3, 1.0], ['hole-left', 4, 2.0],
       ['hole-a', 6, 0.5], ['hole-down', 6.5, 0.5], ['hole-right', 7, 1.0],
@@ -154,19 +155,20 @@ export const ZELDA_SONGS: ZeldaSongChart[] = [
     ]),
   },
   {
-    id: 'nocturne-of-shadow',
-    title: 'Nocturne of Shadow',
-    artist: 'Koji Kondo · Kakariko Graveyard',
-    subtitle: 'Syncopated Twilight Challenge',
+    id: 'fridge-raid-nocturne',
+    title: '3 AM Fridge Raid',
+    artist: 'Midnight Snacker · Pantry Hall',
+    subtitle: 'Syncopated Twilight Challenge + Harmony',
+    category: 'Chill',
     bpm: 104,
-    level: 8,
     createdAt: 0,
     updatedAt: 0,
-    notes: makeNotes('nocturne-of-shadow', [
+    notes: makeNotes('fridge-raid-nocturne', [
       ['hole-left', 0, 1.0], ['hole-right', 1, 1.0], ['hole-right', 2, 0.5], ['hole-a', 2.5, 0.5],
       ['hole-left', 3, 0.5], ['hole-right', 3.5, 0.5], ['hole-down', 4, 2.0],
       ['hole-down', 6, 0.5], ['hole-right', 6.5, 0.5], ['hole-left', 7, 0.5], ['hole-up', 7.5, 0.5],
-      ['hole-left', 8, 1.0], ['hole-right', 9, 1.0], ['hole-a', 10, 2.0],
+      ['hole-left', 8, 1.0], ['hole-right', 9, 1.0],
+      ['hole-a', 10, 2.0], ['hole-up', 10, 2.0],
     ]),
   },
 ];

@@ -10,24 +10,24 @@ export interface OcarinaTheme {
   bodyStroke: string;
   bandColor: string;
   bandAccent: string;
-  triforceColor: string;
+  emblemColor: string;
   holeRim: string;
   holeFill: string;
   glowColor: string;
 }
 
 export const DEFAULT_OCARINA_THEME: OcarinaTheme = {
-  id: 'ocarina-of-time',
-  name: 'Ocarina of Time',
-  description: 'Royal Hyrule sapphire ceramic with silver-gold Triforce band.',
-  bodyPrimary: '#1e56b5',
-  bodySecondary: '#0f2d6b',
-  bodyStroke: '#7fb3ff',
+  id: 'royal-sapphire',
+  name: 'Royal Sapphire',
+  description: 'Deep sapphire glazed ceramic with silver collar & wind-star crest.',
+  bodyPrimary: '#2463cc',
+  bodySecondary: '#0e2963',
+  bodyStroke: '#8ec5ff',
   bandColor: '#dce6f5',
   bandAccent: '#f2c94c',
-  triforceColor: '#f2c94c',
-  holeRim: '#f2c94c',
-  holeFill: '#081226',
+  emblemColor: '#f2c94c',
+  holeRim: '#d7e3f7',
+  holeFill: '#071124',
   glowColor: '#00d2ff',
 };
 
@@ -86,6 +86,11 @@ export class OcarinaSvgController {
     this.render();
   }
 
+  setZoomed(zoomed: boolean): void {
+    const wrapper = this.container.querySelector('.ocarina-svg-wrapper');
+    wrapper?.classList.toggle('is-zoomed', zoomed);
+  }
+
   setHoleActive(holeId: HoleId, active: boolean): void {
     if (active) this.activeHoles.add(holeId);
     else this.activeHoles.delete(holeId);
@@ -113,10 +118,10 @@ export class OcarinaSvgController {
     if (!readout) return;
     const activeList = Array.from(this.activeHoles);
     if (activeList.length > 0) {
+      const labels = activeList.map((id) => `${HOLE_MAP[id].ootButton}(${HOLE_MAP[id].noteName})`);
+      readout.textContent = labels.join(' + ');
       const last = activeList[activeList.length - 1];
-      const meta = HOLE_MAP[last];
-      readout.textContent = `${meta.ootButton} · ${meta.noteName}`;
-      (readout as HTMLElement).style.color = meta.color;
+      (readout as HTMLElement).style.color = HOLE_MAP[last].color;
     } else if (this.isBlowing) {
       readout.textContent = 'BLOWING AIR';
       (readout as HTMLElement).style.color = '#00d2ff';
@@ -130,29 +135,36 @@ export class OcarinaSvgController {
     const showBadges = !this.hideKeyBadges && !isTouchPrimaryDevice();
     const t = this.theme;
 
+    // Ergonomic 5-hole placement along the curved transverse ocarina body
     const holePositions: Record<HoleId, { cx: number; cy: number; r: number }> = {
-      'hole-a': { cx: 295, cy: 200, r: 24 },
-      'hole-down': { cx: 368, cy: 222, r: 22 },
-      'hole-right': { cx: 438, cy: 186, r: 22 },
-      'hole-left': { cx: 356, cy: 146, r: 22 },
-      'hole-up': { cx: 422, cy: 118, r: 21 },
+      'hole-a': { cx: 248, cy: 222, r: 24 },
+      'hole-down': { cx: 320, cy: 242, r: 22 },
+      'hole-right': { cx: 396, cy: 214, r: 22 },
+      'hole-left': { cx: 312, cy: 174, r: 22 },
+      'hole-up': { cx: 382, cy: 152, r: 21 },
     };
 
     const builtInSvg = `
-      <svg class="ocarina-svg" viewBox="0 0 640 340" role="group" aria-label="Interactive Legend of Zelda Ocarina">
+      <svg class="ocarina-svg" viewBox="0 0 640 340" role="group" aria-label="Interactive Transverse Ocarina">
         <defs>
-          <radialGradient id="oc-body-grad" cx="42%" cy="34%" r="68%">
+          <radialGradient id="oc-body-grad" cx="55%" cy="38%" r="65%">
             <stop offset="0%" stop-color="${t.bodyPrimary}" />
-            <stop offset="72%" stop-color="${t.bodySecondary}" />
-            <stop offset="100%" stop-color="#060c1f" />
+            <stop offset="68%" stop-color="${t.bodySecondary}" />
+            <stop offset="100%" stop-color="#050a18" />
           </radialGradient>
-          <linearGradient id="oc-band-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95" />
-            <stop offset="50%" stop-color="${t.bandColor}" />
-            <stop offset="100%" stop-color="#8b9ab8" />
+          <linearGradient id="oc-mouth-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="${t.bodySecondary}" />
+            <stop offset="45%" stop-color="${t.bodyPrimary}" />
+            <stop offset="100%" stop-color="${t.bodySecondary}" />
+          </linearGradient>
+          <linearGradient id="oc-band-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#94a3b8" />
+            <stop offset="35%" stop-color="#ffffff" />
+            <stop offset="65%" stop-color="${t.bandColor}" />
+            <stop offset="100%" stop-color="#64748b" />
           </linearGradient>
           <filter id="oc-glow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="5" result="blur" />
+            <feGaussianBlur stdDeviation="4" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -160,49 +172,51 @@ export class OcarinaSvgController {
           </filter>
         </defs>
 
-        <!-- Drop Shadow -->
-        <ellipse cx="340" cy="285" rx="220" ry="26" fill="rgba(0,0,0,0.45)" />
+        <!-- Soft Drop Shadow -->
+        <ellipse cx="325" cy="306" rx="205" ry="20" fill="rgba(0,0,0,0.45)" />
 
-        <!-- Airflow Particles (visible when blowing) -->
+        <!-- Airflow Particles (top mouthpiece, visible when blowing) -->
         <g id="ocarina-airflow" class="ocarina-airflow">
-          <path d="M 45 205 Q 85 185 120 205" stroke="${t.glowColor}" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="8 8" />
-          <path d="M 30 225 Q 75 215 112 224" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="6 10" />
-          <circle cx="52" cy="196" r="3" fill="${t.glowColor}" />
-          <circle cx="72" cy="232" r="2.5" fill="#f2c94c" />
+          <path d="M 380 28 Q 395 10 412 24" stroke="${t.glowColor}" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="6 6" />
+          <path d="M 405 18 Q 422 6 435 26" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="5 8" />
+          <circle cx="372" cy="32" r="3" fill="${t.glowColor}" />
+          <circle cx="428" cy="32" r="2.5" fill="#f2c94c" />
         </g>
 
-        <!-- Mouthpiece -->
-        <path d="M 102 204 L 188 184 L 204 236 L 114 252 C 102 254 94 242 94 228 C 94 214 96 206 102 204 Z"
-              fill="url(#oc-body-grad)" stroke="${t.bodyStroke}" stroke-width="2.5" />
-        <ellipse cx="104" cy="228" rx="9" ry="22" fill="#071024" stroke="${t.bandAccent}" stroke-width="2" />
+        <!-- Perpendicular / Angled Transverse Mouthpiece (top-right neck) -->
+        <path d="M 382 44 C 386 32, 412 32, 416 44 L 434 114 L 364 114 Z"
+              fill="url(#oc-mouth-grad)" stroke="${t.bodyStroke}" stroke-width="2.2" />
+        <ellipse cx="399" cy="42" rx="16" ry="5" fill="#060d1f" stroke="${t.bandAccent}" stroke-width="1.6" />
 
-        <!-- Main Sweet-Potato Ocarina Body -->
-        <path d="M 176 176
-                 C 210 100, 320 68, 435 80
-                 C 515 88, 566 130, 562 178
-                 C 558 225, 498 264, 415 270
-                 C 320 278, 224 264, 180 232
-                 C 164 220, 166 196, 176 176 Z"
-              fill="url(#oc-body-grad)" stroke="${t.bodyStroke}" stroke-width="3" />
-
-        <!-- Specular Ceramic Highlight -->
-        <path d="M 220 126 C 280 95, 385 88, 468 102"
-              stroke="rgba(255,255,255,0.28)" stroke-width="8" stroke-linecap="round" fill="none" />
-
-        <!-- Decorative Metallic Band -->
-        <path d="M 206 132 C 218 168, 220 218, 206 248 L 228 256 C 242 222, 240 166, 228 122 Z"
+        <!-- Metallic Collar Band around Mouthpiece Neck -->
+        <path d="M 358 96 C 382 90, 416 90, 440 96 L 452 132 C 418 124, 380 124, 346 132 Z"
               fill="url(#oc-band-grad)" stroke="${t.bandAccent}" stroke-width="1.8" />
 
-        <!-- Triforce Emblem on Band -->
-        <g transform="translate(217, 190)" filter="url(#oc-glow)">
-          <polygon points="0,-16 -9,0 9,0" fill="${t.triforceColor}" />
-          <polygon points="-9,0 -18,16 0,16" fill="${t.triforceColor}" />
-          <polygon points="9,0 0,16 18,16" fill="${t.triforceColor}" />
+        <!-- Original Wind-Star Crest on Collar -->
+        <g transform="translate(399, 111)" filter="url(#oc-glow)">
+          <polygon points="0,-11 3.5,-3.5 11,0 3.5,3.5 0,11 -3.5,3.5 -11,0 -3.5,-3.5" fill="${t.emblemColor}" />
+          <circle cx="0" cy="0" r="3" fill="#ffffff" opacity="0.85" />
         </g>
 
-        <!-- Small Acoustic Vent Holes (decorative) -->
-        <circle cx="496" cy="148" r="7" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.5" opacity="0.85" />
-        <circle cx="516" cy="170" r="6" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.5" opacity="0.85" />
+        <!-- Main Realistic Sweet-Potato Transverse Ocarina Body -->
+        <path d="M 102 226
+                 C 138 176, 232 132, 346 126
+                 C 418 122, 492 142, 514 196
+                 C 532 242, 494 286, 414 294
+                 C 314 304, 182 284, 108 244
+                 C 94 236, 94 232, 102 226 Z"
+              fill="url(#oc-body-grad)" stroke="${t.bodyStroke}" stroke-width="3" />
+
+        <!-- Ceramic Specular Gloss Highlight -->
+        <path d="M 164 194 C 228 158, 304 146, 356 146"
+              stroke="rgba(255,255,255,0.28)" stroke-width="7" stroke-linecap="round" fill="none" />
+        <path d="M 442 158 C 474 170, 494 192, 496 218"
+              stroke="rgba(255,255,255,0.2)" stroke-width="6" stroke-linecap="round" fill="none" />
+
+        <!-- Decorative Small Acoustic Sub-Holes (authentic transverse ocarina look) -->
+        <circle cx="176" cy="222" r="8" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.8" opacity="0.85" />
+        <circle cx="446" cy="238" r="9" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.8" opacity="0.85" />
+        <circle cx="468" cy="206" r="7.5" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.8" opacity="0.85" />
 
         <!-- 5 Interactive Musical Holes -->
         ${OCARINA_HOLES.map((hole) => {
@@ -216,14 +230,14 @@ export class OcarinaSvgController {
                tabindex="0"
                aria-label="${hole.ootButton} (${hole.noteName})${showBadges ? `, Key ${keyLabel}` : ''}">
               <circle class="hole-ripple" cx="${pos.cx}" cy="${pos.cy}" r="${pos.r + 8}" fill="none" stroke="${hole.color}" stroke-width="2.5" />
-              <circle class="hole-rim" cx="${pos.cx}" cy="${pos.cy}" r="${pos.r + 3}" fill="${t.holeRim}" />
-              <circle class="hole-core" cx="${pos.cx}" cy="${pos.cy}" r="${pos.r}" fill="${t.holeFill}" stroke="${hole.color}" stroke-width="3" />
-              <text class="hole-note-label" x="${pos.cx}" y="${pos.cy + 4}" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="800">${hole.ootButton}</text>
+              <circle class="hole-rim" cx="${pos.cx}" cy="${pos.cy}" r="${pos.r + 3.5}" fill="${t.holeRim}" />
+              <circle class="hole-core" cx="${pos.cx}" cy="${pos.cy}" r="${pos.r}" fill="${t.holeFill}" stroke="${hole.color}" stroke-width="3.2" />
+              <text class="hole-note-label" x="${pos.cx}" y="${pos.cy + 4}" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="800">${hole.ootButton}</text>
               ${
                 showBadges
-                  ? `<g class="hole-key-badge" transform="translate(${pos.cx}, ${pos.cy + pos.r + 17})">
-                       <rect x="-15" y="-10" width="30" height="18" rx="5" fill="#0b1021" stroke="${hole.color}" stroke-width="1.5" />
-                       <text x="0" y="3" text-anchor="middle" fill="#f7f1e3" font-size="10.5" font-weight="800">${keyLabel}</text>
+                  ? `<g class="hole-key-badge" transform="translate(${pos.cx}, ${pos.cy + pos.r + 16})">
+                       <rect x="-14" y="-9" width="28" height="17" rx="5" fill="#0b1021" stroke="${hole.color}" stroke-width="1.5" />
+                       <text x="0" y="3" text-anchor="middle" fill="#f7f1e3" font-size="10" font-weight="800">${keyLabel}</text>
                      </g>`
                   : ''
               }
@@ -249,84 +263,81 @@ export class OcarinaSvgController {
           ${this.customSvg ? this.customSvg : builtInSvg}
         </div>
 
-        <div class="ocarina-controls-row">
-          <button type="button"
-                  id="ocarina-blow-btn"
-                  class="blow-air-btn ${this.isBlowing ? 'is-blowing' : ''}"
-                  aria-label="Blow Air into Ocarina">
-            <span class="blow-icon" aria-hidden="true">💨</span>
-            <span class="blow-text">BLOW AIR</span>
+        <div class="ocarina-blow-dock">
+          <button type="button" id="ocarina-blow-btn" class="blow-air-btn" aria-label="Blow Air">
+            <span class="blow-icon">💨</span>
+            <span>BLOW AIR</span>
             ${showBadges ? `<kbd class="blow-kbd">${blowKeyLabel}</kbd>` : ''}
           </button>
         </div>
       </div>
     `;
 
-    this.attachPointerHandlers();
-    this.updateNoteReadout();
+    this.bindInteractions();
   }
 
-  private attachPointerHandlers(): void {
-    const holeEls = this.container.querySelectorAll<SVGGElement | HTMLElement>('[data-hole]');
+  private bindInteractions(): void {
+    const holeEls = this.container.querySelectorAll<SVGGElement>('[data-hole]');
     holeEls.forEach((el) => {
-      const holeId = el.getAttribute('data-hole') as HoleId;
-      if (!holeId || !HOLE_MAP[holeId]) return;
+      const holeId = el.dataset.hole as HoleId;
 
       el.addEventListener('pointerdown', (e) => {
-        const pe = e as PointerEvent;
-        pe.preventDefault();
+        e.preventDefault();
         try {
-          (el as Element).setPointerCapture?.(pe.pointerId);
+          el.setPointerCapture(e.pointerId);
         } catch {
-          // Ignore
+          // Ignore if unsupported
         }
-        this.activePointers.set(pe.pointerId, holeId);
+        if (this.activePointers.get(e.pointerId) === holeId) return;
+        this.activePointers.set(e.pointerId, holeId);
         this.callbacks.onHoleDown(holeId);
       });
 
-      const release = (e: Event) => {
-        const pe = e as PointerEvent;
-        if (this.activePointers.get(pe.pointerId) === holeId) {
-          this.activePointers.delete(pe.pointerId);
-          this.callbacks.onHoleUp(holeId);
-        }
+      const release = (e: PointerEvent) => {
+        if (this.activePointers.get(e.pointerId) !== holeId) return;
+        this.activePointers.delete(e.pointerId);
+        this.callbacks.onHoleUp(holeId);
       };
 
       el.addEventListener('pointerup', release);
       el.addEventListener('pointercancel', release);
+      el.addEventListener('lostpointercapture', release);
+
       el.addEventListener('keydown', (e) => {
-        const ke = e as KeyboardEvent;
-        if (ke.key === 'Enter') {
-          ke.preventDefault();
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
           this.callbacks.onHoleDown(holeId);
         }
       });
       el.addEventListener('keyup', (e) => {
-        const ke = e as KeyboardEvent;
-        if (ke.key === 'Enter') {
+        if (e.key === 'Enter' || e.key === ' ') {
           this.callbacks.onHoleUp(holeId);
         }
       });
     });
 
-    const blowBtn = this.container.querySelector('#ocarina-blow-btn');
+    const blowBtn = this.container.querySelector<HTMLButtonElement>('#ocarina-blow-btn');
     if (blowBtn) {
       blowBtn.addEventListener('pointerdown', (e) => {
-        const pe = e as PointerEvent;
-        pe.preventDefault();
-        this.activePointers.set(pe.pointerId, 'blow');
+        e.preventDefault();
+        try {
+          blowBtn.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore
+        }
+        this.activePointers.set(e.pointerId, 'blow');
         this.callbacks.onBlowDown();
       });
-      const releaseBlow = (e: Event) => {
-        const pe = e as PointerEvent;
-        if (this.activePointers.get(pe.pointerId) === 'blow') {
-          this.activePointers.delete(pe.pointerId);
-          this.callbacks.onBlowUp();
-        }
+
+      const releaseBlow = (e: PointerEvent) => {
+        if (this.activePointers.get(e.pointerId) !== 'blow') return;
+        this.activePointers.delete(e.pointerId);
+        this.callbacks.onBlowUp();
       };
+
       blowBtn.addEventListener('pointerup', releaseBlow);
       blowBtn.addEventListener('pointercancel', releaseBlow);
-      blowBtn.addEventListener('pointerleave', releaseBlow);
+      blowBtn.addEventListener('lostpointercapture', releaseBlow);
     }
   }
 }

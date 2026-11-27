@@ -1,7 +1,7 @@
 {
   "name": "Not The Ocarina Playing Simulator",
   "short_name": "Ocarina Sim",
-  "description": "Play a responsive Legend of Zelda Ocarina, compose partitures, export MP3s, and play Taiko & Pump It Up Phoenix 2 inspired Arcade Rhythm.",
+  "description": "Play a responsive polyphonic Ocarina, compose partitures, export MP3s, and master Arcade Rhythm Mode.",
   "start_url": "/not-the-ocarina-playing-simulator/",
   "scope": "/not-the-ocarina-playing-simulator/",
   "display": "standalone",

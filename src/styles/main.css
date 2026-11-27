@@ -1,12 +1,12 @@
 :root {
-  --zelda-sapphire: #1b4b9c;
-  --zelda-sapphire-deep: #0b1633;
-  --zelda-gold: #f2c94c;
-  --zelda-emerald: #27ae60;
-  --zelda-ruby: #e74c3c;
-  --zelda-cyan: #00d2ff;
-  --taiko-orange: #ff6b35;
-  --taiko-cream: #fff7e6;
+  --oc-sapphire: #1b4b9c;
+  --oc-sapphire-deep: #0b1633;
+  --oc-gold: #f2c94c;
+  --oc-emerald: #27ae60;
+  --oc-ruby: #e74c3c;
+  --oc-cyan: #00d2ff;
+  --accent-orange: #ff6b35;
+  --accent-cream: #fff7e6;
   --parchment: #f7f1e3;
 
   --bg-temple: #070b18;
@@ -33,15 +33,17 @@
 }
 
 html,
-body {
+body,
+#app {
   margin: 0;
   padding: 0;
-  min-height: 100dvh;
+  width: 100vw;
+  height: 100dvh;
   background-color: var(--bg-temple);
   color: var(--text-main);
   font-family: var(--font-body);
   -webkit-tap-highlight-color: transparent;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 body::before {
@@ -50,7 +52,7 @@ body::before {
   inset: 0;
   background:
     radial-gradient(circle at 50% 20%, rgba(27, 75, 156, 0.35), rgba(7, 11, 24, 0.92)),
-    url('/not-the-ocarina-playing-simulator/assets/hyrule-temple-bg.jpg') center / cover no-repeat;
+    url('/not-the-ocarina-playing-simulator/assets/arcade-stage-bg.jpg') center / cover no-repeat;
   opacity: 0.45;
   z-index: -1;
   pointer-events: none;
@@ -91,7 +93,7 @@ body::before {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  border: 2px solid var(--zelda-gold);
+  border: 2px solid var(--oc-gold);
   object-fit: cover;
   box-shadow: 0 0 14px rgba(242, 201, 76, 0.35);
 }
@@ -102,7 +104,7 @@ body::before {
   font-size: clamp(1rem, 2.2vw, 1.35rem);
   font-weight: 800;
   letter-spacing: 0.04em;
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
 }
 
@@ -143,7 +145,7 @@ body::before {
 }
 
 .mode-tab.is-active {
-  background: linear-gradient(135deg, var(--taiko-orange), #ff944d);
+  background: linear-gradient(135deg, var(--accent-orange), #ff944d);
   color: #ffffff;
   box-shadow: 0 4px 14px rgba(255, 107, 53, 0.45);
 }
@@ -202,11 +204,11 @@ body::before {
 .btn-outline {
   background: transparent;
   border-color: var(--border-strong);
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
 }
 
 .btn.is-on {
-  border-color: var(--zelda-emerald);
+  border-color: var(--oc-emerald);
   background: rgba(39, 174, 96, 0.22);
   color: #9ff7c4;
 }
@@ -280,14 +282,14 @@ body::before {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--zelda-cyan);
-  box-shadow: 0 0 8px var(--zelda-cyan);
+  background: var(--oc-cyan);
+  box-shadow: 0 0 8px var(--oc-cyan);
 }
 
 .ocarina-skin-pill {
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
   background: rgba(242, 201, 76, 0.12);
   border: 1px solid var(--border-subtle);
   padding: 0.28rem 0.75rem;
@@ -372,7 +374,7 @@ body::before {
 
 .blow-air-btn {
   appearance: none;
-  border: 2px solid var(--zelda-cyan);
+  border: 2px solid var(--oc-cyan);
   background: linear-gradient(135deg, rgba(0, 210, 255, 0.18), rgba(27, 75, 156, 0.45));
   color: #ffffff;
   font-family: var(--font-display);
@@ -391,7 +393,7 @@ body::before {
 
 .blow-air-btn.is-blowing,
 .blow-air-btn:active {
-  background: linear-gradient(135deg, var(--zelda-cyan), #2f80ed);
+  background: linear-gradient(135deg, var(--oc-cyan), #2f80ed);
   color: #061024;
   box-shadow: 0 0 22px rgba(0, 210, 255, 0.65);
   transform: scale(1.03);
@@ -403,7 +405,7 @@ body::before {
   padding: 0.15rem 0.45rem;
   border-radius: 6px;
   background: rgba(7, 11, 24, 0.85);
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
   border: 1px solid rgba(242, 201, 76, 0.5);
 }
 
@@ -438,7 +440,7 @@ dialog.game-dialog::backdrop {
   margin: 0;
   font-family: var(--font-display);
   font-size: 1.2rem;
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
 }
 
 .dialog-body {
@@ -478,7 +480,7 @@ dialog.game-dialog::backdrop {
 .toggle-row input[type='checkbox'] {
   width: 20px;
   height: 20px;
-  accent-color: var(--zelda-gold);
+  accent-color: var(--oc-gold);
   cursor: pointer;
 }
 
@@ -491,7 +493,7 @@ dialog.game-dialog::backdrop {
 
 .slider-row input[type='range'] {
   width: 100%;
-  accent-color: var(--zelda-gold);
+  accent-color: var(--oc-gold);
 }
 
 .setting-group {
@@ -504,7 +506,7 @@ dialog.game-dialog::backdrop {
   margin: 0;
   font-family: var(--font-display);
   font-size: 1rem;
-  color: var(--zelda-cyan);
+  color: var(--oc-cyan);
 }
 
 .keymap-grid {
@@ -537,7 +539,7 @@ dialog.game-dialog::backdrop {
 }
 
 .key-capture-btn.is-listening {
-  background: var(--taiko-orange);
+  background: var(--accent-orange);
   color: #ffffff;
   border-color: #ffffff;
   animation: pulseGlow 0.8s infinite alternate;
@@ -545,10 +547,10 @@ dialog.game-dialog::backdrop {
 
 @keyframes pulseGlow {
   from {
-    box-shadow: 0 0 4px var(--taiko-orange);
+    box-shadow: 0 0 4px var(--accent-orange);
   }
   to {
-    box-shadow: 0 0 16px var(--taiko-orange);
+    box-shadow: 0 0 16px var(--accent-orange);
   }
 }
 
@@ -559,19 +561,23 @@ dialog.game-dialog::backdrop {
   left: 50%;
   transform: translateX(-50%) translateY(120%);
   background: linear-gradient(135deg, #1b4b9c, #0f2d6b);
-  border: 2px solid var(--zelda-gold);
-  color: var(--zelda-gold);
+  border: 2px solid var(--oc-gold);
+  color: var(--oc-gold);
   font-family: var(--font-display);
   font-weight: 700;
   padding: 0.7rem 1.4rem;
   border-radius: 999px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
   z-index: 999;
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease, visibility 0.2s ease;
   pointer-events: none;
 }
 
 .toast-banner.is-visible {
+  opacity: 1;
+  visibility: visible;
   transform: translateX(-50%) translateY(0);
 }
 
@@ -629,7 +635,7 @@ dialog.game-dialog-wide {
 }
 
 .skin-card.is-selected {
-  border-color: var(--zelda-gold);
+  border-color: var(--oc-gold);
   background: rgba(242, 201, 76, 0.14);
   box-shadow: 0 0 18px rgba(242, 201, 76, 0.28);
 }
@@ -645,7 +651,7 @@ dialog.game-dialog-wide {
   justify-content: center;
 }
 
-.skin-triforce {
+.skin-emblem {
   font-size: 1.35rem;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
@@ -654,7 +660,7 @@ dialog.game-dialog-wide {
   display: block;
   font-family: var(--font-display);
   font-size: 0.95rem;
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
 }
 
 .skin-info p {
@@ -711,7 +717,7 @@ dialog.game-dialog-wide {
 
 .instruction-box h3 {
   margin: 0 0 0.5rem;
-  color: var(--zelda-cyan);
+  color: var(--oc-cyan);
   font-family: var(--font-display);
 }
 
@@ -725,7 +731,7 @@ dialog.game-dialog-wide {
 
 .instruction-box code {
   background: rgba(0, 0, 0, 0.45);
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
   padding: 0.1rem 0.35rem;
   border-radius: 5px;
   font-family: var(--font-mono);
@@ -779,7 +785,7 @@ dialog.game-dialog-wide {
   padding: 0.65rem 0.9rem;
   border-radius: 10px;
   background: rgba(231, 76, 60, 0.2);
-  border: 1px solid var(--zelda-ruby);
+  border: 1px solid var(--oc-ruby);
   color: #ffb3ab;
   font-size: 0.88rem;
 }
@@ -845,7 +851,7 @@ dialog.game-dialog-wide {
 .bpm-pill input,
 .bpm-pill select {
   background: rgba(7, 11, 24, 0.85);
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 6px;
   padding: 0.2rem 0.35rem;
@@ -990,8 +996,8 @@ dialog.game-dialog-wide {
   top: 0;
   bottom: 0;
   width: 2.5px;
-  background: var(--zelda-ruby);
-  box-shadow: 0 0 8px var(--zelda-ruby);
+  background: var(--oc-ruby);
+  box-shadow: 0 0 8px var(--oc-ruby);
   pointer-events: none;
   z-index: 4;
 }
@@ -1012,7 +1018,7 @@ dialog.game-dialog-wide {
 }
 
 .track-chip.is-active {
-  border-color: var(--zelda-gold);
+  border-color: var(--oc-gold);
   background: rgba(242, 201, 76, 0.15);
 }
 
@@ -1035,7 +1041,7 @@ dialog.game-dialog-wide {
 }
 
 .track-chip-del:hover {
-  color: var(--zelda-ruby);
+  color: var(--oc-ruby);
 }
 
 .file-btn {
@@ -1110,7 +1116,7 @@ dialog.game-dialog-wide {
 }
 
 .song-card.is-selected {
-  border-color: var(--taiko-orange);
+  border-color: var(--accent-orange);
   background: rgba(255, 107, 53, 0.16);
   box-shadow: 0 0 18px rgba(255, 107, 53, 0.3);
 }
@@ -1125,15 +1131,15 @@ dialog.game-dialog-wide {
 }
 
 .song-lv {
-  background: var(--zelda-sapphire);
-  color: var(--zelda-gold);
+  background: var(--oc-sapphire);
+  color: var(--oc-gold);
   padding: 0.12rem 0.45rem;
   border-radius: 6px;
   font-family: var(--font-mono);
 }
 
 .song-grade {
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
   font-family: var(--font-mono);
 }
 
@@ -1196,13 +1202,13 @@ dialog.game-dialog-wide {
 }
 
 .combo-pill {
-  color: var(--zelda-gold);
-  border-color: var(--zelda-gold);
+  color: var(--oc-gold);
+  border-color: var(--oc-gold);
 }
 
 .miss-pill.is-danger {
   color: #ffb3ab;
-  border-color: var(--zelda-ruby);
+  border-color: var(--oc-ruby);
   background: rgba(231, 76, 60, 0.25);
 }
 
@@ -1224,7 +1230,7 @@ dialog.game-dialog-wide {
 .arcade-outcome-card.is-gameover h2 {
   margin: 0;
   font-family: var(--font-display);
-  color: var(--zelda-ruby);
+  color: var(--oc-ruby);
 }
 
 .results-top {
@@ -1238,7 +1244,7 @@ dialog.game-dialog-wide {
   margin: 0.2rem 0;
   font-family: var(--font-mono);
   font-size: clamp(1.8rem, 4vw, 2.5rem);
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
 }
 
 .results-grade-badge {
@@ -1247,7 +1253,7 @@ dialog.game-dialog-wide {
   font-weight: 800;
   padding: 0.5rem 1.25rem;
   border-radius: 18px;
-  background: linear-gradient(135deg, var(--taiko-orange), #f2c94c);
+  background: linear-gradient(135deg, var(--accent-orange), #f2c94c);
   color: #140d00;
   box-shadow: 0 8px 24px rgba(242, 201, 76, 0.4);
 }
@@ -1276,14 +1282,62 @@ dialog.game-dialog-wide {
 }
 
 /* Stage 2: Dedicated Game Screens (Title Screen & Mode Screen Shells) */
-.title-screen {
+.title-screen,
+.splash-screen {
   position: relative;
-  min-height: 100dvh;
+  width: 100vw;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: clamp(0.85rem, 2vw, 1.5rem);
+  padding: clamp(0.75rem, 1.8vw, 1.4rem);
   overflow: hidden;
+}
+
+.splash-screen {
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.splash-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.25rem;
+  z-index: 2;
+  padding: 1.5rem;
+}
+
+.splash-crest {
+  width: clamp(96px, 16vw, 148px);
+  height: clamp(96px, 16vw, 148px);
+  border-radius: 50%;
+  border: 3px solid var(--oc-gold);
+  box-shadow: 0 0 38px rgba(242, 201, 76, 0.6);
+  object-fit: cover;
+}
+
+.splash-prompt {
+  margin-top: 0.75rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.1rem, 2.8vw, 1.65rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #ffffff;
+  background: rgba(11, 16, 33, 0.78);
+  border: 2px solid var(--oc-gold);
+  padding: 0.7rem 2rem;
+  border-radius: 999px;
+  box-shadow: 0 0 28px rgba(242, 201, 76, 0.45);
+  animation: splashPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes splashPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.82; }
 }
 
 .title-backdrop {
@@ -1319,7 +1373,7 @@ dialog.game-dialog-wide {
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.12em;
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
   background: rgba(11, 16, 33, 0.8);
   border: 1px solid var(--border-strong);
   padding: 0.35rem 0.85rem;
@@ -1351,7 +1405,7 @@ dialog.game-dialog-wide {
   width: clamp(84px, 14vw, 128px);
   height: clamp(84px, 14vw, 128px);
   border-radius: 50%;
-  border: 3px solid var(--zelda-gold);
+  border: 3px solid var(--oc-gold);
   box-shadow: 0 0 32px rgba(242, 201, 76, 0.55);
   object-fit: cover;
 }
@@ -1362,7 +1416,7 @@ dialog.game-dialog-wide {
   font-size: clamp(1.75rem, 4.5vw, 3.2rem);
   font-weight: 800;
   letter-spacing: 0.05em;
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
   text-shadow: 0 4px 20px rgba(0, 0, 0, 0.85), 0 0 28px rgba(242, 201, 76, 0.35);
   line-height: 1.15;
 }
@@ -1406,7 +1460,7 @@ dialog.game-dialog-wide {
 }
 
 .mode-launch-card.is-arcade {
-  border-color: var(--taiko-orange);
+  border-color: var(--accent-orange);
 }
 
 .mode-launch-card.is-arcade:hover {
@@ -1426,11 +1480,11 @@ dialog.game-dialog-wide {
   display: block;
   font-family: var(--font-display);
   font-size: 1.08rem;
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
 }
 
 .mode-launch-card.is-arcade .mode-card-body strong {
-  color: var(--taiko-orange);
+  color: var(--accent-orange);
 }
 
 .mode-card-body p {
@@ -1446,13 +1500,13 @@ dialog.game-dialog-wide {
   font-size: 0.9rem;
   padding: 0.45rem 0.85rem;
   border-radius: 999px;
-  background: var(--zelda-gold);
+  background: var(--oc-gold);
   color: #161000;
   flex-shrink: 0;
 }
 
 .mode-launch-card.is-arcade .mode-card-cta {
-  background: var(--taiko-orange);
+  background: var(--accent-orange);
   color: #ffffff;
 }
 
@@ -1460,11 +1514,13 @@ dialog.game-dialog-wide {
 .game-screen-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  width: 100vw;
+  height: 100dvh;
   max-width: 1360px;
   margin: 0 auto;
-  padding: clamp(0.45rem, 1.2vw, 0.9rem);
-  gap: 0.65rem;
+  padding: clamp(0.45rem, 1vw, 0.85rem);
+  gap: 0.5rem;
+  overflow: hidden;
 }
 
 .game-mode-hud {
@@ -1472,12 +1528,13 @@ dialog.game-dialog-wide {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.55rem 0.9rem;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem;
   background: var(--surface-card);
   backdrop-filter: blur(12px);
   border: 1.5px solid var(--border-subtle);
   border-radius: 16px;
+  flex-shrink: 0;
 }
 
 .hud-left {
@@ -1490,155 +1547,700 @@ dialog.game-dialog-wide {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(1rem, 2.2vw, 1.25rem);
-  color: var(--zelda-gold);
+  color: var(--oc-gold);
 }
 
 .game-screen-body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 0.65rem;
+  gap: 0.55rem;
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .mode-top-workspace {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  overflow: hidden;
 }
 
 .ocarina-bottom-dock {
-  padding: 0.65rem 1rem;
+  padding: 0.55rem 0.85rem;
+  flex-shrink: 0;
 }
 
 .ocarina-bottom-dock .ocarina-svg-wrapper {
-  max-width: 520px;
+  max-width: 440px;
 }
 
-/* Stage 2 M8: Taiko-Web-Inspired Arcade Stage & Results Styles */
-.arcade-song-dropdown,
-.comp-sample-select {
-  min-width: 220px;
-  max-width: 100%;
-  font-weight: 700;
+.ocarina-svg-wrapper {
+  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: 50% 62%;
 }
 
-.taiko-stage-shell {
+.ocarina-svg-wrapper.is-zoomed {
+  transform: scale(1.42) translateY(-6%);
+}
+
+/* =========================================================
+   ARCADE MODE — 100dvh 3-SCREEN ARCHITECTURE
+   ========================================================= */
+.arcade-shell {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
 }
 
-.taiko-top-banner {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.taiko-banner-info {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  flex-wrap: wrap;
-}
-
-.taiko-bpm-badge {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--zelda-gold);
-  background: rgba(242, 201, 76, 0.14);
-  border: 1px solid var(--border-subtle);
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-}
-
-.taiko-soul-gauge {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  background: rgba(7, 11, 24, 0.8);
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.soul-label,
-.soul-clear-tag {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: var(--zelda-gold);
-}
-
-.soul-track {
-  flex: 1;
-  height: 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-}
-
-.soul-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #ff6b35, #f2c94c, #27ae60);
-  transition: width 0.15s ease;
-}
-
-.taiko-festival-stage {
-  position: relative;
-  height: 76px;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1.5px solid var(--border-subtle);
-}
-
-.festival-bg-img {
+.arcade-mode-panel {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  opacity: 0.75;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.festival-overlay {
-  position: absolute;
-  inset: 0;
+.arcade-shell.is-phase-select .arcade-ingame-bottom,
+.arcade-shell.is-phase-results .arcade-ingame-bottom,
+.arcade-shell.is-phase-gameover .arcade-ingame-bottom {
+  display: none;
+}
+
+.arcade-shell.is-phase-playing .arcade-mode-panel {
+  height: 50dvh;
+  flex-shrink: 0;
+}
+
+.arcade-shell.is-phase-playing .arcade-ingame-bottom {
+  position: relative;
+  height: 50dvh;
+  width: 100vw;
+  flex-shrink: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(7, 11, 24, 0.35);
-  font-family: var(--font-display);
-  font-size: 0.92rem;
-  color: #fde68a;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+  padding: 0.35rem 0.75rem;
+  border-top: 2px solid var(--border-strong);
 }
 
-.taiko-results-hero {
-  position: relative;
-  border-radius: 16px;
-  overflow: hidden;
-  padding: 1.15rem;
-  border: 2px solid var(--zelda-gold);
-}
-
-.results-hero-img {
+.arcade-stage-bg-img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 0.85;
+  z-index: 0;
+  pointer-events: none;
 }
 
-.results-hero-scrim {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(7, 11, 24, 0.88), rgba(7, 11, 24, 0.58));
-}
-
-.taiko-results-hero .results-top {
+.arcade-ocarina-mount {
   position: relative;
   z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.arcade-ocarina-mount .ocarina-stage-inner {
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.arcade-ocarina-mount .ocarina-status-bar,
+.arcade-ocarina-mount .ocarina-blow-dock {
+  display: none;
+}
+
+.arcade-ocarina-mount .ocarina-svg-wrapper {
+  max-width: min(560px, 92vw);
+  max-height: 100%;
+}
+
+.arcade-ocarina-mount .ocarina-svg {
+  max-height: 44dvh;
+  width: auto;
+  margin: 0 auto;
+}
+
+/* Shared Fullscreen Background Layer */
+.arcade-select-fullscreen,
+.arcade-results-fullscreen {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(0.6rem, 1.5vw, 1.1rem);
+  gap: 0.65rem;
+  overflow: hidden;
+}
+
+.arcade-bg-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.arcade-bg-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(7, 11, 24, 0.58) 0%, rgba(7, 11, 24, 0.78) 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.arcade-bg-scrim.is-dark {
+  background: rgba(7, 11, 24, 0.84);
+}
+
+/* SCREEN 1: MUSIC SELECTION ROLLER */
+.select-top-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.category-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(11, 16, 33, 0.85);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 0.28rem 0.5rem;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.cat-arrow-btn {
+  appearance: none;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--oc-gold);
+  font-weight: 800;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.cat-arrow-btn kbd {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.category-pills {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.category-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.cat-pill {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.28rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cat-pill.is-active {
+  background: var(--oc-gold);
+  color: #120d00;
+}
+
+.select-top-tools {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.select-main-grid {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1rem;
+  align-items: center;
+  max-width: 1220px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.music-roller-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.45rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.roller-nav-hint {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--oc-gold);
+  letter-spacing: 0.08em;
+}
+
+.music-roller-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  justify-content: center;
+}
+
+.roller-card {
+  width: 100%;
+  border-radius: 14px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.roller-card.is-side {
+  appearance: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.55rem 1rem;
+  background: rgba(15, 24, 52, 0.82);
+  border: 1.5px solid rgba(142, 197, 255, 0.28);
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+}
+
+.roller-card.is-side:hover {
+  border-color: var(--oc-gold);
+  transform: translateX(4px);
+}
+
+.roller-side-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.roller-side-bpm {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.roller-card.is-focused {
+  background: rgba(14, 23, 48, 0.95);
+  border: 3px solid var(--oc-gold);
+  padding: 0.9rem 1.05rem;
+  box-shadow: 0 12px 32px rgba(242, 201, 76, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.roller-focused-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2.4vw, 1.55rem);
+  color: #ffffff;
+}
+
+.roller-meta {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.roller-diff-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.diff-card {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+}
+
+.diff-card.is-selected {
+  border-color: var(--oc-gold);
+  background: rgba(242, 201, 76, 0.16);
+  box-shadow: 0 0 16px rgba(242, 201, 76, 0.3);
+}
+
+.diff-card strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+}
+
+.diff-card span {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.diff-svg-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.song-stats-panel {
+  background: rgba(14, 23, 48, 0.92);
+  backdrop-filter: blur(12px);
+  border: 2px solid var(--border-strong);
+  border-radius: 20px;
+  padding: 1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+}
+
+.song-stats-panel h3 {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  color: var(--oc-gold);
+}
+
+.stats-song-name {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.stats-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.65rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  font-size: 0.88rem;
+}
+
+.stat-row strong {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+
+.stat-row .is-good { color: #4ade80; }
+.stat-row .is-bad { color: #f87171; }
+.stat-row .is-gold { color: var(--oc-gold); font-size: 1.1rem; }
+
+.offset-control-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.start-stage-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* SCREEN 2: IN-GAME TOP 50% */
+.arcade-ingame-top {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #0b1021;
+}
+
+.ingame-hud-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.35rem 0.75rem;
+  background: rgba(14, 23, 48, 0.96);
+  border-bottom: 1.5px solid var(--border-subtle);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.ingame-song-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ingame-diff-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(242, 201, 76, 0.16);
+  color: var(--oc-gold);
+  border: 1px solid var(--border-subtle);
+}
+
+.ingame-life-wrap {
+  flex: 1;
+  min-width: 140px;
+  max-width: 320px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.life-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--oc-gold);
+}
+
+.life-track {
+  flex: 1;
+  height: 13px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.life-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #4ade80);
+  transition: width 0.15s ease, background 0.2s ease;
+}
+
+.life-fill.is-danger {
+  background: linear-gradient(90deg, #dc2626, #f97316);
+}
+
+.life-fill.is-clear {
+  background: linear-gradient(90deg, #22c55e, #00d2ff);
+}
+
+.arcade-highway-canvas {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: block;
+}
+
+/* Countdown Overlay in front of the whole interface */
+.arcade-countdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: clamp(5rem, 18vw, 11rem);
+  font-weight: 800;
+  color: var(--oc-gold);
+  text-shadow: 0 8px 36px rgba(0, 0, 0, 0.9), 0 0 42px rgba(242, 201, 76, 0.7);
+  background: rgba(7, 11, 24, 0.42);
+  pointer-events: none;
+}
+
+.arcade-countdown-overlay.is-active {
+  display: flex;
+}
+
+/* SCREEN 3: RESULTS */
+.results-top-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.results-badge {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: rgba(11, 16, 33, 0.85);
+  border: 2px solid var(--oc-gold);
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+}
+
+.results-song-title-right {
+  font-family: var(--font-display);
+  font-size: clamp(1.1rem, 2.8vw, 1.7rem);
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.85);
+  background: rgba(11, 16, 33, 0.72);
+  padding: 0.35rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+}
+
+.results-center-card {
+  position: relative;
+  z-index: 2;
+  margin: auto;
+  width: min(920px, 100%);
+  background: rgba(14, 23, 48, 0.92);
+  backdrop-filter: blur(14px);
+  border: 2.5px solid var(--oc-gold);
+  border-radius: 24px;
+  padding: clamp(1rem, 2.5vw, 1.8rem);
+  display: grid;
+  grid-template-columns: 0.9fr 1.2fr;
+  gap: 1.4rem;
+  align-items: center;
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.6);
+}
+
+.results-left-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.75rem;
+}
+
+.results-diff-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-display);
+  font-weight: 800;
+}
+
+.results-score-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.score-caption {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.results-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.judgement-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.65rem;
+}
+
+.judgement-grid-3 .j-item.is-good strong { color: #4ade80; }
+.judgement-grid-3 .j-item.is-okay strong { color: #f2c94c; }
+.judgement-grid-3 .j-item.is-bad strong { color: #f87171; }
+.judgement-grid-3 .j-item.is-combo strong { color: #00d2ff; }
+
+.arcade-results-fullscreen .arcade-outcome-card {
+  position: relative;
+  z-index: 2;
+  margin: auto;
+  max-width: 520px;
+  text-align: center;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .select-main-grid {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+    align-content: start;
+  }
+  .roller-card.is-side {
+    display: none;
+  }
+  .roller-card.is-side:first-of-type,
+  .roller-card.is-side:last-of-type {
+    display: flex;
+    padding: 0.35rem 0.75rem;
+  }
+  .song-stats-panel {
+    padding: 0.65rem 0.85rem;
+    gap: 0.45rem;
+  }
+  .stats-rows {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem;
+  }
+  .stat-row.is-score {
+    grid-column: span 2;
+  }
+  .results-center-card {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+    padding: 1rem;
+  }
+  .arcade-ocarina-mount .ocarina-svg-wrapper.is-zoomed {
+    transform: scale(1.28) translateY(-4%);
+  }
 }

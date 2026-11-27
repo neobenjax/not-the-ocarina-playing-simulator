@@ -12,10 +12,10 @@ export interface HoleMeta {
 
 export const OCARINA_HOLES: HoleMeta[] = [
   { id: 'hole-a', label: 'A', ootButton: 'A', noteName: 'D5', frequency: 587.33, color: '#2f80ed', defaultKey: 'KeyJ' },
-  { id: 'hole-down', label: 'C▼', ootButton: 'C-Down', noteName: 'F5', frequency: 698.46, color: '#f2c94c', defaultKey: 'KeyK' },
-  { id: 'hole-right', label: 'C▶', ootButton: 'C-Right', noteName: 'A5', frequency: 880.0, color: '#27ae60', defaultKey: 'KeyL' },
-  { id: 'hole-left', label: 'C◀', ootButton: 'C-Left', noteName: 'B5', frequency: 987.77, color: '#ff6b35', defaultKey: 'KeyI' },
-  { id: 'hole-up', label: 'C▲', ootButton: 'C-Up', noteName: 'D6', frequency: 1174.66, color: '#e74c3c', defaultKey: 'KeyU' },
+  { id: 'hole-down', label: '▼', ootButton: '▼', noteName: 'F5', frequency: 698.46, color: '#f2c94c', defaultKey: 'KeyK' },
+  { id: 'hole-right', label: '▶', ootButton: '▶', noteName: 'A5', frequency: 880.0, color: '#27ae60', defaultKey: 'KeyL' },
+  { id: 'hole-left', label: '◀', ootButton: '◀', noteName: 'B5', frequency: 987.77, color: '#ff6b35', defaultKey: 'KeyI' },
+  { id: 'hole-up', label: '▲', ootButton: '▲', noteName: 'D6', frequency: 1174.66, color: '#e74c3c', defaultKey: 'KeyU' },
 ];
 
 export const HOLE_MAP: Record<HoleId, HoleMeta> = Object.fromEntries(
@@ -29,6 +29,8 @@ export interface KeyMapping {
   'hole-left': string;
   'hole-up': string;
   blow: string;
+  prevCategory: string;
+  nextCategory: string;
 }
 
 export const DEFAULT_KEY_MAPPING: KeyMapping = {
@@ -38,6 +40,8 @@ export const DEFAULT_KEY_MAPPING: KeyMapping = {
   'hole-left': 'KeyI',
   'hole-up': 'KeyU',
   blow: 'Space',
+  prevCategory: 'KeyQ',
+  nextCategory: 'KeyE',
 };
 
 export interface AppSettings {
@@ -106,5 +110,9 @@ export interface ArcadeHighScore {
   grade: string;
   plate: string;
   maxCombo: number;
+  playCount?: number;
+  correctNotes?: number;
+  missedNotes?: number;
+  totalNotes?: number;
   updatedAt: number;
 }

@@ -4,18 +4,22 @@ const LABEL_TO_HOLE: Record<string, HoleId> = {
   'a': 'hole-a',
   'hole-a': 'hole-a',
   'd5': 'hole-a',
+  '▼': 'hole-down',
   'c-down': 'hole-down',
   'c▼': 'hole-down',
   'hole-down': 'hole-down',
   'f5': 'hole-down',
+  '▶': 'hole-right',
   'c-right': 'hole-right',
   'c▶': 'hole-right',
   'hole-right': 'hole-right',
   'a5': 'hole-right',
+  '◀': 'hole-left',
   'c-left': 'hole-left',
   'c◀': 'hole-left',
   'hole-left': 'hole-left',
   'b5': 'hole-left',
+  '▲': 'hole-up',
   'c-up': 'hole-up',
   'c▲': 'hole-up',
   'hole-up': 'hole-up',
@@ -95,22 +99,22 @@ export function parsePartitureText(raw: string): PartitureTrack {
   };
 }
 
-export interface ZeldaMotif {
+export interface SecretMotif {
   name: string;
   sequence: HoleId[];
 }
 
-export const ZELDA_MOTIFS: ZeldaMotif[] = [
-  { name: "Zelda's Lullaby", sequence: ['hole-left', 'hole-up', 'hole-right', 'hole-left', 'hole-up', 'hole-right'] },
-  { name: "Epona's Song", sequence: ['hole-up', 'hole-left', 'hole-right', 'hole-up', 'hole-left', 'hole-right'] },
-  { name: "Saria's Song", sequence: ['hole-down', 'hole-right', 'hole-left', 'hole-down', 'hole-right', 'hole-left'] },
-  { name: "Sun's Song", sequence: ['hole-right', 'hole-down', 'hole-up', 'hole-right', 'hole-down', 'hole-up'] },
-  { name: 'Song of Time', sequence: ['hole-right', 'hole-a', 'hole-down', 'hole-right', 'hole-a', 'hole-down'] },
-  { name: 'Song of Storms', sequence: ['hole-a', 'hole-down', 'hole-up', 'hole-a', 'hole-down', 'hole-up'] },
+export const SECRET_MOTIFS: SecretMotif[] = [
+  { name: 'Princess Nap Time', sequence: ['hole-left', 'hole-up', 'hole-right', 'hole-left', 'hole-up', 'hole-right'] },
+  { name: "Horse Girl's Whistle", sequence: ['hole-up', 'hole-left', 'hole-right', 'hole-up', 'hole-left', 'hole-right'] },
+  { name: 'Bestie Jam (GPS Lost)', sequence: ['hole-down', 'hole-right', 'hole-left', 'hole-down', 'hole-right', 'hole-left'] },
+  { name: 'Daylight Savings Song', sequence: ['hole-right', 'hole-down', 'hole-up', 'hole-right', 'hole-down', 'hole-up'] },
+  { name: 'Overdue Deadline Tune', sequence: ['hole-right', 'hole-a', 'hole-down', 'hole-right', 'hole-a', 'hole-down'] },
+  { name: 'Windmill Weather Forecast', sequence: ['hole-a', 'hole-down', 'hole-up', 'hole-a', 'hole-down', 'hole-up'] },
 ];
 
-export function detectZeldaMotif(recentHoles: HoleId[]): string | null {
-  for (const motif of ZELDA_MOTIFS) {
+export function detectSecretMotif(recentHoles: HoleId[]): string | null {
+  for (const motif of SECRET_MOTIFS) {
     const len = motif.sequence.length;
     if (recentHoles.length >= len) {
       const slice = recentHoles.slice(-len);

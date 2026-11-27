@@ -131,7 +131,7 @@ export function playModalOpen(): void {
   }
 }
 
-/** Sound Machine Recipe: Taiko Rim Tick (Metronome) */
+/** Sound Machine Recipe: Woodblock Rim Tick (Metronome) */
 export function playMetronomeTick(accent = false): void {
   if (getEffectiveSfxGain() <= 0.01) return;
   const ctx = getSharedAudioContext();
@@ -164,7 +164,7 @@ export function playMetronomeTick(accent = false): void {
   osc.stop(now + 0.07);
 }
 
-/** Sound Machine Recipe: Zelda Secret Chime */
+/** Sound Machine Recipe: Secret Discovery Chime */
 export function playMelodyChime(): void {
   if (getEffectiveSfxGain() <= 0.01) return;
   const ctx = getSharedAudioContext();
@@ -254,7 +254,7 @@ class MenuBgmPlayer {
   private step = 0;
   private running = false;
 
-  // Ambient Hyrule harp/chime arpeggio pattern (16 steps)
+  // Ambient mystic harp/chime arpeggio pattern (16 steps)
   private readonly pattern = [
     587.33, 0, 880.0, 0, 1046.5, 0, 880.0, 0,
     523.25, 0, 783.99, 0, 987.77, 0, 783.99, 0,

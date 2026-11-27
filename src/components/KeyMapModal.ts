@@ -68,6 +68,8 @@ export class KeyMapModal {
         color: h.color,
       })),
       { key: 'blow' as keyof KeyMapping, label: 'Blow Air (Breath)', color: '#00d2ff' },
+      { key: 'prevCategory' as keyof KeyMapping, label: 'Prev Category / Playlist', color: '#f2c94c' },
+      { key: 'nextCategory' as keyof KeyMapping, label: 'Next Category / Playlist', color: '#f2c94c' },
     ];
 
     this.dialog.innerHTML = `

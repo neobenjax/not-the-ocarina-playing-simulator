@@ -1,10 +1,10 @@
 import { HOLE_MAP, HoleId, PartitureNote, PartitureTrack, Playlist } from '../../types';
-import { ZELDA_SONGS } from '../../data/zeldaSongs';
+import { SAMPLE_SONGS } from '../../data/sampleSongs';
 import { haptics } from '../../haptics/hapticEngine';
 import { ocarinaSynth } from '../../audio/ocarinaSynth';
 import { playMelodyChime, playMetronomeTick, playUiClick } from '../../audio/soundMachineSfx';
 import { exportTrackToMp3 } from '../../audio/mp3Exporter';
-import { detectZeldaMotif, parsePartitureText, serializePartitureText } from './partitureFormat';
+import { detectSecretMotif, parsePartitureText, serializePartitureText } from './partitureFormat';
 
 const LANES_TOP_TO_BOTTOM: HoleId[] = ['hole-up', 'hole-left', 'hole-right', 'hole-down', 'hole-a'];
 const PX_PER_BEAT = 64;
@@ -50,7 +50,7 @@ export class FreePlayComposer {
     const firstTrack = playlists[0]?.tracks[0];
     this.currentTrack = firstTrack
       ? structuredClone(firstTrack)
-      : structuredClone(ZELDA_SONGS[0]);
+      : structuredClone(SAMPLE_SONGS[0]);
     this.onPlaylistsChange = callbacks.onPlaylistsChange;
     this.onToast = callbacks.onToast;
     this.onHighlightHole = callbacks.onHighlightHole;
@@ -65,7 +65,7 @@ export class FreePlayComposer {
   onLiveNoteStart(holeId: HoleId): void {
     this.recentMotifHoles.push(holeId);
     if (this.recentMotifHoles.length > 12) this.recentMotifHoles.shift();
-    const detected = detectZeldaMotif(this.recentMotifHoles);
+    const detected = detectSecretMotif(this.recentMotifHoles);
     if (detected) {
       this.recentMotifHoles = [];
       playMelodyChime();
@@ -163,9 +163,9 @@ export class FreePlayComposer {
         <div class="composer-top-bar">
           <div class="composer-title-group">
             <select id="comp-sample-select" class="text-input comp-sample-select" aria-label="Load Sample Partiture">
-              <option value="">🎼 Load Zelda Sample...</option>
-              ${ZELDA_SONGS.map(
-                (s) => `<option value="zelda:${s.id}" ${this.currentTrack.id === s.id ? 'selected' : ''}>🎵 ${this.escapeHtml(s.title)} (${s.bpm} BPM)</option>`
+              <option value="">🎼 Load Sample...</option>
+              ${SAMPLE_SONGS.map(
+                (s) => `<option value="sample:${s.id}" ${this.currentTrack.id === s.id ? 'selected' : ''}>🎵 ${this.escapeHtml(s.title)} (${s.bpm} BPM)</option>`
               ).join('')}
             </select>
 
@@ -242,7 +242,7 @@ export class FreePlayComposer {
                    )
                    .join('')}
                </div>`
-            : `<p class="muted-text" style="margin:0;">Play the Ocarina below or pick a Zelda sample above to compose!</p>`
+            : `<p class="muted-text" style="margin:0;">Play the Ocarina below or pick a sample above to compose!</p>`
         }
       </div>
     `;
@@ -387,9 +387,9 @@ export class FreePlayComposer {
   private bindEvents(): void {
     this.container.querySelector<HTMLSelectElement>('#comp-sample-select')?.addEventListener('change', (e) => {
       const val = (e.target as HTMLSelectElement).value;
-      if (!val.startsWith('zelda:')) return;
-      const songId = val.slice(6);
-      const sample = ZELDA_SONGS.find((s) => s.id === songId);
+      if (!val.startsWith('sample:')) return;
+      const songId = val.slice(7);
+      const sample = SAMPLE_SONGS.find((s) => s.id === songId);
       if (!sample) return;
       playUiClick();
       haptics.tapButton();

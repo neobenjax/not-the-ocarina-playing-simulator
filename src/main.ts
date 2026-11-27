@@ -23,7 +23,7 @@ import {
   saveSettings,
 } from './storage/persistence';
 import { haptics } from './haptics/hapticEngine';
-import { ocarinaSynth } from './audio/ocarinaSynth';
+import { ocarinaSynth, getSharedAudioContext } from './audio/ocarinaSynth';
 import { menuBgm, playUiClick, setSfxVolumes } from './audio/soundMachineSfx';
 import { OcarinaSvgController } from './components/OcarinaSvg';
 import { KeyMapModal } from './components/KeyMapModal';
@@ -78,7 +78,11 @@ class OcarinaApp {
     haptics.setEnabled(this.settings.hapticsEnabled);
     ocarinaSynth.setVolume(this.settings.masterVolume * this.settings.ocarinaVolume);
     setSfxVolumes(this.settings.masterVolume, this.settings.sfxVolume);
-    if (this.settings.bgmEnabled) {
+    if (this.activeScreen === 'splash') {
+      menuBgm.setTrack('lullaby');
+      menuBgm.start();
+    } else if (this.activeScreen === 'title' && this.settings.bgmEnabled) {
+      menuBgm.setTrack('emotional');
       menuBgm.start();
     } else {
       menuBgm.stop();
@@ -96,6 +100,7 @@ class OcarinaApp {
     this.arcadeMode = null;
     this.ocarinaCtrl = null;
     this.activeScreen = screen;
+    this.applyAudioAndHaptics();
     this.renderScreen();
   }
 
@@ -115,7 +120,7 @@ class OcarinaApp {
     this.root.innerHTML = `
       <div class="splash-screen" id="splash-enter-btn" role="button" tabindex="0" aria-label="Click or Press Enter to Start">
         <div class="title-backdrop">
-          <img src="/not-the-ocarina-playing-simulator/assets/title-hero-art.jpg" alt="" class="title-hero-img" />
+          <img src="/not-the-ocarina-playing-simulator/assets/splash-bg.jpg" alt="" class="title-hero-img" />
           <div class="title-scrim"></div>
         </div>
         <main class="splash-center">
@@ -126,8 +131,19 @@ class OcarinaApp {
       </div>
     `;
 
+    const unlockAudio = () => {
+      try {
+        void getSharedAudioContext().resume();
+      } catch {
+        // Ignore
+      }
+    };
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+
     const enter = () => {
       if (this.activeScreen !== 'splash') return;
+      unlockAudio();
       this.navigateTo('title');
     };
     this.root.querySelector('#splash-enter-btn')?.addEventListener('click', enter);
@@ -138,7 +154,7 @@ class OcarinaApp {
     this.root.innerHTML = `
       <div class="title-screen">
         <div class="title-backdrop">
-          <img src="/not-the-ocarina-playing-simulator/assets/title-hero-art.jpg" alt="" class="title-hero-img" />
+          <img src="/not-the-ocarina-playing-simulator/assets/mode-select-bg.jpg" alt="" class="title-hero-img" />
           <div class="title-scrim"></div>
         </div>
 

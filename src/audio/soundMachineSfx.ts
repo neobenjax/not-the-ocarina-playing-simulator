@@ -1,4 +1,4 @@
-import { getSharedAudioContext } from './ocarinaSynth';
+import { getSharedAudioContext, ocarinaSynth } from './ocarinaSynth';
 
 /**
  * Sound Effects & Menu BGM generated via Sound Machine Generator WebMCP
@@ -246,45 +246,141 @@ export function playGameOver(): void {
   });
 }
 
+export type BgmTrackId = 'lullaby' | 'emotional';
+
+interface BgmStep {
+  melody: number; // Hz (0 = rest)
+  durSec: number;
+  pad?: number;   // optional soft bass/harmony Hz
+}
+
+// 60 steps * 0.5s = 30.0s Calm Ocarina Lullaby Sonata (Splash Screen)
+const LULLABY_SONATA_30S: BgmStep[] = [
+  // Phrase 1 (0 - 7.5s): Gentle F major rocking lullaby
+  { melody: 698.46, durSec: 0.9, pad: 174.61 }, { melody: 0, durSec: 0 },
+  { melody: 880.0, durSec: 0.45 }, { melody: 1046.5, durSec: 0.9 },
+  { melody: 0, durSec: 0 }, { melody: 987.77, durSec: 0.45 },
+  { melody: 880.0, durSec: 0.9, pad: 220.0 }, { melody: 0, durSec: 0 },
+  { melody: 698.46, durSec: 0.9 }, { melody: 0, durSec: 0 },
+  { melody: 783.99, durSec: 0.9, pad: 196.0 }, { melody: 0, durSec: 0 },
+  { melody: 659.25, durSec: 0.9 }, { melody: 0, durSec: 0 },
+  { melody: 587.33, durSec: 0.9 },
+
+  // Phrase 2 (7.5 - 15.0s): Ascending tender response
+  { melody: 698.46, durSec: 0.9, pad: 174.61 }, { melody: 0, durSec: 0 },
+  { melody: 880.0, durSec: 0.45 }, { melody: 1174.66, durSec: 0.9 },
+  { melody: 0, durSec: 0 }, { melody: 1046.5, durSec: 0.45 },
+  { melody: 880.0, durSec: 0.9, pad: 233.08 }, { melody: 0, durSec: 0 },
+  { melody: 783.99, durSec: 0.9 }, { melody: 0, durSec: 0 },
+  { melody: 698.46, durSec: 1.4, pad: 174.61 }, { melody: 0, durSec: 0 },
+  { melody: 0, durSec: 0 }, { melody: 523.25, durSec: 0.45 },
+  { melody: 587.33, durSec: 0.45 },
+
+  // Phrase 3 (15.0 - 22.5s): Dreamy bridge
+  { melody: 880.0, durSec: 0.9, pad: 220.0 }, { melody: 0, durSec: 0 },
+  { melody: 987.77, durSec: 0.45 }, { melody: 1046.5, durSec: 0.9 },
+  { melody: 0, durSec: 0 }, { melody: 880.0, durSec: 0.45 },
+  { melody: 783.99, durSec: 0.9, pad: 196.0 }, { melody: 0, durSec: 0 },
+  { melody: 698.46, durSec: 0.9 }, { melody: 0, durSec: 0 },
+  { melody: 659.25, durSec: 0.9, pad: 261.63 }, { melody: 0, durSec: 0 },
+  { melody: 587.33, durSec: 0.9 }, { melody: 0, durSec: 0 },
+  { melody: 523.25, durSec: 0.9 },
+
+  // Phrase 4 (22.5 - 30.0s): Peaceful resolution
+  { melody: 587.33, durSec: 0.9, pad: 233.08 }, { melody: 0, durSec: 0 },
+  { melody: 698.46, durSec: 0.45 }, { melody: 880.0, durSec: 0.9 },
+  { melody: 0, durSec: 0 }, { melody: 783.99, durSec: 0.45 },
+  { melody: 698.46, durSec: 1.4, pad: 174.61 }, { melody: 0, durSec: 0 },
+  { melody: 0, durSec: 0 }, { melody: 659.25, durSec: 0.45 },
+  { melody: 587.33, durSec: 0.9, pad: 174.61 }, { melody: 0, durSec: 0 },
+  { melody: 698.46, durSec: 1.8 }, { melody: 0, durSec: 0 },
+  { melody: 0, durSec: 0 },
+];
+
+// 60 steps * 0.5s = 30.0s Emotional Ocarina Theme (Mode Selector Screen)
+const EMOTIONAL_OCARINA_30S: BgmStep[] = [
+  // Phrase 1 (0 - 7.5s): Bittersweet D minor yearning
+  { melody: 587.33, durSec: 0.9, pad: 146.83 }, { melody: 0, durSec: 0 },
+  { melody: 698.46, durSec: 0.45 }, { melody: 880.0, durSec: 1.3 },
+  { melody: 0, durSec: 0 }, { melody: 0, durSec: 0 },
+  { melody: 783.99, durSec: 0.45, pad: 233.08 }, { melody: 698.46, durSec: 0.45 },
+  { melody: 659.25, durSec: 1.3 }, { melody: 0, durSec: 0 },
+  { melody: 0, durSec: 0 }, { melody: 587.33, durSec: 0.45 },
+  { melody: 659.25, durSec: 0.9, pad: 220.0 }, { melody: 0, durSec: 0 },
+  { melody: 523.25, durSec: 0.9 },
+
+  // Phrase 2 (7.5 - 15.0s): Soaring F major lift
+  { melody: 698.46, durSec: 0.9, pad: 174.61 }, { melody: 0, durSec: 0 },
+  { melody: 880.0, durSec: 0.45 }, { melody: 1046.5, durSec: 1.3 },
+  { melody: 0, durSec: 0 }, { melody: 0, durSec: 0 },
+  { melody: 1174.66, durSec: 0.9, pad: 233.08 }, { melody: 0, durSec: 0 },
+  { melody: 1046.5, durSec: 0.45 }, { melody: 987.77, durSec: 0.45 },
+  { melody: 880.0, durSec: 1.4, pad: 261.63 }, { melody: 0, durSec: 0 },
+  { melody: 0, durSec: 0 }, { melody: 783.99, durSec: 0.45 },
+  { melody: 880.0, durSec: 0.45 },
+
+  // Phrase 3 (15.0 - 22.5s): Nostalgic swell
+  { melody: 1174.66, durSec: 0.9, pad: 196.0 }, { melody: 0, durSec: 0 },
+  { melody: 1046.5, durSec: 0.45 }, { melody: 987.77, durSec: 0.9 },
+  { melody: 0, durSec: 0 }, { melody: 880.0, durSec: 0.45 },
+  { melody: 783.99, durSec: 0.9, pad: 233.08 }, { melody: 0, durSec: 0 },
+  { melody: 698.46, durSec: 0.9 }, { melody: 0, durSec: 0 },
+  { melody: 659.25, durSec: 0.9, pad: 220.0 }, { melody: 0, durSec: 0 },
+  { melody: 587.33, durSec: 0.9 }, { melody: 0, durSec: 0 },
+  { melody: 659.25, durSec: 0.9 },
+
+  // Phrase 4 (22.5 - 30.0s): Tender cadence home
+  { melody: 698.46, durSec: 0.9, pad: 233.08 }, { melody: 0, durSec: 0 },
+  { melody: 880.0, durSec: 0.45 }, { melody: 783.99, durSec: 0.9 },
+  { melody: 0, durSec: 0 }, { melody: 698.46, durSec: 0.45 },
+  { melody: 659.25, durSec: 0.9, pad: 220.0 }, { melody: 0, durSec: 0 },
+  { melody: 523.25, durSec: 0.9 }, { melody: 0, durSec: 0 },
+  { melody: 587.33, durSec: 1.8, pad: 146.83 }, { melody: 0, durSec: 0 },
+  { melody: 0, durSec: 0 }, { melody: 0, durSec: 0 },
+  { melody: 0, durSec: 0 },
+];
+
 /**
- * Menu BGM Loop (inspired by Sound Machine Generator DAW 92 BPM pattern)
+ * 30-Second Looping Ocarina BGM Player
  */
 class MenuBgmPlayer {
   private timer: number | null = null;
   private step = 0;
   private running = false;
+  private track: BgmTrackId = 'lullaby';
 
-  // Ambient mystic harp/chime arpeggio pattern (16 steps)
-  private readonly pattern = [
-    587.33, 0, 880.0, 0, 1046.5, 0, 880.0, 0,
-    523.25, 0, 783.99, 0, 987.77, 0, 783.99, 0,
-  ];
+  setTrack(track: BgmTrackId): void {
+    if (this.track !== track) {
+      this.track = track;
+      this.step = 0;
+    }
+  }
+
+  getTrack(): BgmTrackId {
+    return this.track;
+  }
 
   start(): void {
     if (this.running) return;
     this.running = true;
-    const stepMs = (60 / 92 / 2) * 1000;
-    this.timer = window.setInterval(() => {
+    const stepMs = 500; // 60 steps * 500ms = 30.0s loop
+    const playTick = () => {
       if (!this.running) return;
-      const freq = this.pattern[this.step % this.pattern.length];
-      this.step++;
-      if (freq > 0 && getEffectiveSfxGain() > 0.01) {
-        const ctx = getSharedAudioContext();
-        const now = ctx.currentTime;
-        const env = ctx.createGain();
-        env.gain.setValueAtTime(0.0001, now);
-        env.gain.linearRampToValueAtTime(0.055 * getEffectiveSfxGain(), now + 0.02);
-        env.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
-
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now);
-        osc.connect(env);
-        env.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.6);
+      const seq = this.track === 'lullaby' ? LULLABY_SONATA_30S : EMOTIONAL_OCARINA_30S;
+      const item = seq[this.step % seq.length];
+      this.step = (this.step + 1) % seq.length;
+      const gain = getEffectiveSfxGain();
+      if (gain > 0.01) {
+        if (item.melody > 0) {
+          ocarinaSynth.playOneShot(item.melody, item.durSec, 0.24 * gain);
+        }
+        if (item.pad && item.pad > 0) {
+          ocarinaSynth.playOneShot(item.pad, 1.8, 0.1 * gain);
+        }
       }
-    }, stepMs);
+    };
+    playTick();
+    this.timer = window.setInterval(playTick, stepMs);
   }
 
   stop(): void {

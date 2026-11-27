@@ -62,7 +62,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   breathMode: false,
   hapticsEnabled: true,
-  bgmEnabled: false,
+  bgmEnabled: true,
   metronomeEnabled: true,
   arcadeAssist: 'novice',
   offsetMs: 0,

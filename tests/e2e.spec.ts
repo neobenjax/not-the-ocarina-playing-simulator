@@ -17,8 +17,9 @@ test.describe('Not The Ocarina Playing Simulator — Arcade Overhaul E2E', () =>
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('./', { waitUntil: 'networkidle' });
 
-    // 1. Splash Screen ("CLICK OR PRESS ENTER")
+    // 1. Splash Screen ("CLICK OR PRESS ENTER") + Anti-copyright disclaimer
     await expect(page.locator('.splash-prompt')).toHaveText('CLICK OR PRESS ENTER');
+    await expect(page.locator('.splash-disclaimer')).toContainText('unaffiliated with Nintendo');
     await page.keyboard.press('Enter');
 
     // 2. Mode Selector Screen (no old subtitle, 100dvh no scroll)
@@ -46,19 +47,38 @@ test.describe('Not The Ocarina Playing Simulator — Arcade Overhaul E2E', () =>
     }));
     expect(overflowComposer).toEqual({ x: false, y: false });
 
-    // Load a funny sample from floating left dock
-    await page.selectOption('#comp-sample-select', 'sample:mild-drizzle-forecast');
-    await expect(page.locator('#comp-track-title')).toHaveValue('Windmill Weather Forecast');
-    const sampleNotesCount = await page.locator('.partiture-note').count();
-    expect(sampleNotesCount).toBeGreaterThan(5);
+    // Snap defaults to Free ("0") and Pitch-Bend buttons appear on Ocarina
+    await expect(page.locator('#comp-snap')).toHaveValue('0');
+    await expect(page.locator('[data-pitch="up"]')).toBeVisible();
+    await expect(page.locator('[data-pitch="down"]')).toBeVisible();
 
-    // Polyphonic & Long-Press Input: hold two keys simultaneously!
+    // Load Never Gonna Give You Up (Chorus) with pitch-bending
+    await page.selectOption('#comp-sample-select', 'sample:never-gonna-give-you-up');
+    await expect(page.locator('#comp-track-title')).toHaveValue('Never Gonna Give You Up (Chorus)');
+    const sampleNotesCount = await page.locator('.partiture-note').count();
+    expect(sampleNotesCount).toBeGreaterThan(20);
+    await expect(page.locator('.partiture-note.is-bend-up').first()).toBeVisible();
+
+    // Pitch-bend Up + Polyphonic Input
+    await page.keyboard.down('ArrowUp');
     await page.keyboard.down('KeyJ');
-    await page.keyboard.down('KeyL');
-    await page.waitForTimeout(350);
+    await page.waitForTimeout(200);
     await page.keyboard.up('KeyJ');
-    await page.keyboard.up('KeyL');
-    await expect(page.locator('.partiture-note')).toHaveCount(sampleNotesCount + 2);
+    await page.keyboard.up('ArrowUp');
+    await expect(page.locator('.partiture-note')).toHaveCount(sampleNotesCount + 1);
+
+    // Ctrl+Click multi-select & Delete (Supr) keybinding
+    const notes = page.locator('.partiture-note');
+    await notes.nth(0).click();
+    await notes.nth(1).click({ modifiers: ['Control'] });
+    await expect(page.locator('.partiture-note.is-selected')).toHaveCount(2);
+    await page.keyboard.press('Delete');
+    await expect(page.locator('.partiture-note')).toHaveCount(sampleNotesCount - 1);
+
+    // Clear keybinding (KeyC) opens confirmation dialog when track is not empty
+    await page.keyboard.press('KeyC');
+    await expect(page.locator('#composer-clear-dialog')).toBeVisible();
+    await page.click('#clear-dialog-cancel');
 
     // 4. Return to Mode Select & Enter Mode 2 (Arcade)
     await page.click('#btn-back-title');

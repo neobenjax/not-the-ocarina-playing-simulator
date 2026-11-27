@@ -1,4 +1,5 @@
 export type HoleId = 'hole-a' | 'hole-down' | 'hole-right' | 'hole-left' | 'hole-up';
+export type PitchBend = 'normal' | 'up' | 'down';
 
 export interface HoleMeta {
   id: HoleId;
@@ -22,6 +23,13 @@ export const HOLE_MAP: Record<HoleId, HoleMeta> = Object.fromEntries(
   OCARINA_HOLES.map((h) => [h.id, h])
 ) as Record<HoleId, HoleMeta>;
 
+export function getBentFrequency(holeId: HoleId, bend: PitchBend = 'normal'): number {
+  const base = HOLE_MAP[holeId].frequency;
+  if (bend === 'up') return base * Math.pow(2, 1 / 12);
+  if (bend === 'down') return base * Math.pow(2, -1 / 12);
+  return base;
+}
+
 export interface KeyMapping {
   'hole-a': string;
   'hole-down': string;
@@ -29,8 +37,13 @@ export interface KeyMapping {
   'hole-left': string;
   'hole-up': string;
   blow: string;
+  pitchUp: string;
+  pitchDown: string;
   prevCategory: string;
   nextCategory: string;
+  compRecord: string;
+  compPlay: string;
+  compClear: string;
 }
 
 export const DEFAULT_KEY_MAPPING: KeyMapping = {
@@ -40,8 +53,13 @@ export const DEFAULT_KEY_MAPPING: KeyMapping = {
   'hole-left': 'KeyI',
   'hole-up': 'KeyU',
   blow: 'Space',
+  pitchUp: 'ArrowUp',
+  pitchDown: 'ArrowDown',
   prevCategory: 'KeyQ',
   nextCategory: 'KeyE',
+  compRecord: 'KeyR',
+  compPlay: 'KeyP',
+  compClear: 'KeyC',
 };
 
 export interface AppSettings {
@@ -79,6 +97,7 @@ export interface PartitureNote {
   holeId: HoleId;
   startBeat: number;
   durationBeats: number;
+  pitchBend?: PitchBend;
 }
 
 export interface PartitureTrack {

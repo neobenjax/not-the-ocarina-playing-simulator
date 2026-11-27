@@ -68,8 +68,13 @@ export class KeyMapModal {
         color: h.color,
       })),
       { key: 'blow' as keyof KeyMapping, label: 'Blow Air (Breath)', color: '#00d2ff' },
+      { key: 'pitchUp' as keyof KeyMapping, label: 'Pitch Bend Up (+1)', color: '#4ade80' },
+      { key: 'pitchDown' as keyof KeyMapping, label: 'Pitch Bend Down (-1)', color: '#f87171' },
       { key: 'prevCategory' as keyof KeyMapping, label: 'Prev Category / Playlist', color: '#f2c94c' },
       { key: 'nextCategory' as keyof KeyMapping, label: 'Next Category / Playlist', color: '#f2c94c' },
+      { key: 'compRecord' as keyof KeyMapping, label: 'Composer: Record', color: '#e74c3c' },
+      { key: 'compPlay' as keyof KeyMapping, label: 'Composer: Play / Pause', color: '#27ae60' },
+      { key: 'compClear' as keyof KeyMapping, label: 'Composer: Clear Track', color: '#ff6b35' },
     ];
 
     this.dialog.innerHTML = `

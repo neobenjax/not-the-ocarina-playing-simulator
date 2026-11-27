@@ -1,10 +1,12 @@
 import {
   AppSettings,
   ArcadeHighScore,
+  getBentFrequency,
   HOLE_MAP,
   HoleId,
   KeyMapping,
   PartitureTrack,
+  PitchBend,
   Playlist,
 } from '../../types';
 import { SAMPLE_SONGS } from '../../data/sampleSongs';
@@ -23,6 +25,7 @@ import { calculateArcadeScore, JudgementCounts } from './arcadeScoring';
 interface ChartNoteRuntime {
   id: string;
   holeId: HoleId;
+  pitchBend: PitchBend;
   targetSec: number;
   durationSec: number;
   judged: boolean;
@@ -237,7 +240,7 @@ export class ArcadeMode {
     this.render();
   }
 
-  onPlayerInput(holeId: HoleId): boolean {
+  onPlayerInput(holeId: HoleId, pitchBend: PitchBend = 'normal'): boolean {
     if (this.phase !== 'playing') return false;
 
     const nowSec = this.getCurrentSongSec();
@@ -247,11 +250,11 @@ export class ArcadeMode {
     }
     const offsetSec = this.settings.offsetMs / 1000;
 
-    // 1. Prefer matching an unjudged note on the exact pressed holeId (enables chords!)
+    // 1. Prefer matching an unjudged note on the exact pressed holeId AND pitchBend (enables chords!)
     let candidate: ChartNoteRuntime | null = null;
     let bestAbsDiff = Infinity;
     for (const n of this.chartNotes) {
-      if (n.judged || n.holeId !== holeId) continue;
+      if (n.judged || n.holeId !== holeId || n.pitchBend !== pitchBend) continue;
       const diff = Math.abs(nowSec - (n.targetSec + offsetSec));
       if (diff <= 0.22 && diff < bestAbsDiff) {
         bestAbsDiff = diff;
@@ -259,21 +262,21 @@ export class ArcadeMode {
       }
     }
 
-    // 2. If no note on this lane, check if a different single note is right on the receptor (wrong-hole miss)
+    // 2. If no exact match, check if a note (wrong hole or wrong pitchBend) is right on the receptor
     if (!candidate) {
-      let wrongHoleCandidate: ChartNoteRuntime | null = null;
+      let wrongCandidate: ChartNoteRuntime | null = null;
       let wrongDiff = Infinity;
       for (const n of this.chartNotes) {
         if (n.judged) continue;
         const diff = Math.abs(nowSec - (n.targetSec + offsetSec));
         if (diff <= 0.16 && diff < wrongDiff) {
           wrongDiff = diff;
-          wrongHoleCandidate = n;
+          wrongCandidate = n;
         }
       }
-      if (wrongHoleCandidate) {
-        wrongHoleCandidate.judged = true;
-        this.registerMiss(HOLE_MAP[wrongHoleCandidate.holeId].frequency);
+      if (wrongCandidate) {
+        wrongCandidate.judged = true;
+        this.registerMiss(getBentFrequency(wrongCandidate.holeId, wrongCandidate.pitchBend));
         return true;
       }
       return false;
@@ -311,7 +314,7 @@ export class ArcadeMode {
     }
 
     const vol = this.settings.masterVolume * this.settings.ocarinaVolume;
-    ocarinaSynth.playOneShot(HOLE_MAP[holeId].frequency, Math.min(0.65, candidate.durationSec), vol);
+    ocarinaSynth.playOneShot(getBentFrequency(holeId, candidate.pitchBend), Math.min(0.65, candidate.durationSec), vol);
     this.updateLiveHud();
     if (this.lifeMeter <= 0) {
       this.triggerGameOver();
@@ -359,6 +362,7 @@ export class ArcadeMode {
       .map((n) => ({
         id: n.id,
         holeId: n.holeId,
+        pitchBend: n.pitchBend ?? 'normal',
         targetSec: n.startBeat * secPerBeat,
         durationSec: Math.max(0.25, n.durationBeats * secPerBeat),
         judged: false,
@@ -523,24 +527,30 @@ export class ArcadeMode {
         ctx.stroke();
       });
 
-      // Render Notes per lane (right-to-left)
+      // Render Notes per lane (right-to-left) with upper/lower/center pitch-bend positioning
       for (const n of this.chartNotes) {
         const meta = HOLE_MAP[n.holeId];
         const laneIdx = LANES_TOP_TO_BOTTOM.indexOf(n.holeId);
-        const cy = laneIdx * laneH + laneH * 0.5;
+        const cy =
+          n.pitchBend === 'up'
+            ? laneIdx * laneH + laneH * 0.28
+            : n.pitchBend === 'down'
+              ? laneIdx * laneH + laneH * 0.72
+              : laneIdx * laneH + laneH * 0.5;
+        const noteR = n.pitchBend === 'normal' ? targetRadius - 1 : Math.max(8, targetRadius * 0.72);
         const target = n.targetSec + offsetSec;
 
         if (!n.guidePlayed && nowSec >= target) {
           n.guidePlayed = true;
           if (this.settings.arcadeAssist === 'novice') {
             const guideVol = this.settings.masterVolume * this.settings.guideVolume * 0.45;
-            ocarinaSynth.playOneShot(meta.frequency, Math.min(0.55, n.durationSec), guideVol);
+            ocarinaSynth.playOneShot(getBentFrequency(n.holeId, n.pitchBend), Math.min(0.55, n.durationSec), guideVol);
           }
         }
 
         if (!n.judged && nowSec - target > 0.22) {
           n.judged = true;
-          this.registerMiss(meta.frequency);
+          this.registerMiss(getBentFrequency(n.holeId, n.pitchBend));
           if (this.phase !== 'playing') {
             ctx.restore();
             return;
@@ -557,24 +567,30 @@ export class ArcadeMode {
           const tailW = n.durationSec * pxPerSec;
           ctx.fillStyle = meta.color;
           ctx.globalAlpha = 0.4;
-          ctx.fillRect(x, cy - targetRadius * 0.5, tailW, targetRadius);
+          ctx.fillRect(x, cy - noteR * 0.5, tailW, noteR);
           ctx.globalAlpha = 1;
         }
 
         // Note circle
         ctx.beginPath();
-        ctx.arc(x, cy, targetRadius - 1, 0, Math.PI * 2);
+        ctx.arc(x, cy, noteR, 0, Math.PI * 2);
         ctx.fillStyle = meta.color;
         ctx.fill();
         ctx.lineWidth = 2.5;
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = n.pitchBend === 'up' ? '#4ade80' : n.pitchBend === 'down' ? '#f87171' : '#ffffff';
         ctx.stroke();
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = `800 ${Math.max(10, Math.round(targetRadius * 0.7))}px Fredoka, sans-serif`;
+        ctx.font = `800 ${Math.max(9, Math.round(noteR * 0.72))}px Fredoka, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(meta.ootButton, x, cy + 1);
+        const label =
+          n.pitchBend === 'up'
+            ? `${meta.ootButton}↑`
+            : n.pitchBend === 'down'
+              ? `${meta.ootButton}↓`
+              : meta.ootButton;
+        ctx.fillText(label, x, cy + 1);
       }
 
       if (this.lastJudgementText && performance.now() - this.lastJudgementPerf < 550) {

@@ -3,9 +3,10 @@ import {
   AppSettings,
   ArcadeHighScore,
   CustomSvgSkin,
-  HOLE_MAP,
+  getBentFrequency,
   HoleId,
   KeyMapping,
+  PitchBend,
   Playlist,
 } from './types';
 import {
@@ -56,6 +57,9 @@ class OcarinaApp {
 
   private heldHoles: HoleId[] = [];
   private isBlowKeyHeld = false;
+  private pitchUpHeld = false;
+  private pitchDownHeld = false;
+  private pitchBend: PitchBend = 'normal';
   private toastTimer: number | null = null;
 
   constructor(root: HTMLElement) {
@@ -127,6 +131,10 @@ class OcarinaApp {
           <img src="/not-the-ocarina-playing-simulator/assets/ocarina-emblem.jpg" alt="Ocarina Emblem" class="splash-crest" />
           <h1 class="game-main-title">NOT THE OCARINA PLAYING SIMULATOR</h1>
           <div class="splash-prompt">CLICK OR PRESS ENTER</div>
+          <p class="splash-disclaimer">
+            This unofficial ocarina simulator is unaffiliated with Nintendo&reg; or The Legend of Zelda&trade;.
+            This is a fan-made simulator built entirely with original and AI-generated assets, with no direct assets or sprites from Nintendo.
+          </p>
         </main>
       </div>
     `;
@@ -227,6 +235,7 @@ class OcarinaApp {
       onHoleUp: (id) => this.handleHoleUp(id),
       onBlowDown: () => this.handleBlowDown(),
       onBlowUp: () => this.handleBlowUp(),
+      onPitchBendChange: (bend) => this.setPitchBend(bend),
     });
     this.ocarinaCtrl.setHideKeyBadges(this.settings.forceHideKeyBadges);
     this.applySelectedSkin();
@@ -264,6 +273,7 @@ class OcarinaApp {
       onHoleUp: (id) => this.handleHoleUp(id),
       onBlowDown: () => this.handleBlowDown(),
       onBlowUp: () => this.handleBlowUp(),
+      onPitchBendChange: (bend) => this.setPitchBend(bend),
     });
     this.ocarinaCtrl.setHideKeyBadges(this.settings.forceHideKeyBadges);
     this.applySelectedSkin();
@@ -414,6 +424,43 @@ class OcarinaApp {
         if (this.arcadeMode?.handleSelectKeyDown(e)) return;
       }
 
+      if (this.activeScreen === 'composer') {
+        if (e.code === 'Delete' || e.key === 'Delete') {
+          e.preventDefault();
+          this.freePlayComposer?.deleteSelectedNotes();
+          return;
+        }
+        if (e.code === this.keyMapping.compRecord) {
+          e.preventDefault();
+          this.freePlayComposer?.toggleRecord();
+          return;
+        }
+        if (e.code === this.keyMapping.compPlay) {
+          e.preventDefault();
+          this.freePlayComposer?.togglePlay();
+          return;
+        }
+        if (e.code === this.keyMapping.compClear) {
+          e.preventDefault();
+          this.freePlayComposer?.requestClear();
+          return;
+        }
+      }
+
+      if (e.code === this.keyMapping.pitchUp) {
+        e.preventDefault();
+        this.pitchUpHeld = true;
+        this.setPitchBend('up');
+        return;
+      }
+
+      if (e.code === this.keyMapping.pitchDown) {
+        e.preventDefault();
+        this.pitchDownHeld = true;
+        this.setPitchBend('down');
+        return;
+      }
+
       if (e.code === this.keyMapping.blow) {
         e.preventDefault();
         this.handleBlowDown();
@@ -428,6 +475,16 @@ class OcarinaApp {
     });
 
     window.addEventListener('keyup', (e) => {
+      if (e.code === this.keyMapping.pitchUp) {
+        this.pitchUpHeld = false;
+        this.setPitchBend(this.pitchDownHeld ? 'down' : 'normal');
+        return;
+      }
+      if (e.code === this.keyMapping.pitchDown) {
+        this.pitchDownHeld = false;
+        this.setPitchBend(this.pitchUpHeld ? 'up' : 'normal');
+        return;
+      }
       if (e.code === this.keyMapping.blow) {
         this.handleBlowUp();
         return;
@@ -439,6 +496,16 @@ class OcarinaApp {
     });
   }
 
+  private setPitchBend(bend: PitchBend): void {
+    this.pitchBend = bend;
+    this.ocarinaCtrl?.setPitchBend(bend);
+    if (!this.settings.breathMode || this.isBlowKeyHeld) {
+      for (const id of this.heldHoles) {
+        ocarinaSynth.startVoice(id, getBentFrequency(id, this.pitchBend));
+      }
+    }
+  }
+
   private handleHoleDown(holeId: HoleId): void {
     if (!this.heldHoles.includes(holeId)) {
       this.heldHoles.push(holeId);
@@ -446,13 +513,13 @@ class OcarinaApp {
     this.ocarinaCtrl?.setHoleActive(holeId, true);
     haptics.pressHole();
 
-    if (this.activeScreen === 'arcade' && this.arcadeMode?.onPlayerInput(holeId)) {
+    if (this.activeScreen === 'arcade' && this.arcadeMode?.onPlayerInput(holeId, this.pitchBend)) {
       return;
     }
 
     if (!this.settings.breathMode || this.isBlowKeyHeld) {
-      ocarinaSynth.startVoice(holeId, HOLE_MAP[holeId].frequency);
-      this.freePlayComposer?.onLiveNoteStart(holeId);
+      ocarinaSynth.startVoice(holeId, getBentFrequency(holeId, this.pitchBend));
+      this.freePlayComposer?.onLiveNoteStart(holeId, this.pitchBend);
     }
   }
 
@@ -469,7 +536,7 @@ class OcarinaApp {
     haptics.blowAir();
 
     for (const id of this.heldHoles) {
-      ocarinaSynth.startVoice(id, HOLE_MAP[id].frequency);
+      ocarinaSynth.startVoice(id, getBentFrequency(id, this.pitchBend));
     }
   }
 

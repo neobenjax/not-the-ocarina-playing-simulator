@@ -1,5 +1,5 @@
 import { Mp3Encoder } from '@breezystack/lamejs';
-import { HOLE_MAP, PartitureTrack } from '../types';
+import { getBentFrequency, HOLE_MAP, PartitureTrack } from '../types';
 
 /**
  * Offline-renders a PartitureTrack with procedural Ocarina synthesis
@@ -34,13 +34,15 @@ export async function exportTrackToMp3(track: PartitureTrack): Promise<Blob> {
     voiceGain.gain.setValueAtTime(0.36, start + Math.max(0.03, dur - 0.05));
     voiceGain.gain.exponentialRampToValueAtTime(0.0001, start + dur + 0.07);
 
+    const freq = getBentFrequency(note.holeId, note.pitchBend ?? 'normal');
+
     const osc1 = offline.createOscillator();
     osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(meta.frequency, start);
+    osc1.frequency.setValueAtTime(freq, start);
 
     const osc2 = offline.createOscillator();
     osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(meta.frequency, start);
+    osc2.frequency.setValueAtTime(freq, start);
     const osc2Gain = offline.createGain();
     osc2Gain.gain.value = 0.16;
 

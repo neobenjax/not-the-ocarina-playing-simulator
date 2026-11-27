@@ -1,6 +1,6 @@
 import 'overlayscrollbars/overlayscrollbars.css';
 import { OverlayScrollbars } from 'overlayscrollbars';
-import { HOLE_MAP, HoleId, PartitureNote, PartitureTrack, Playlist } from '../../types';
+import { getBentFrequency, HOLE_MAP, HoleId, PartitureNote, PartitureTrack, PitchBend, Playlist } from '../../types';
 import { SAMPLE_SONGS } from '../../data/sampleSongs';
 import { haptics } from '../../haptics/hapticEngine';
 import { ocarinaSynth } from '../../audio/ocarinaSynth';
@@ -20,11 +20,12 @@ export class FreePlayComposer {
   private container: HTMLElement;
   private dockLeft: HTMLElement;
   private dockRight: HTMLElement;
+  private clearDialog: HTMLDialogElement;
   private playlists: Playlist[];
   private activePlaylistId: string;
   private currentTrack: PartitureTrack;
-  private selectedNoteId: string | null = null;
-  private snapBeats = 0.5;
+  private selectedNoteIds = new Set<string>();
+  private snapBeats = 0; // Default: Free
   private isRecording = false;
   private isPlaying = false;
   private useMetronome = true;
@@ -77,6 +78,31 @@ export class FreePlayComposer {
     this.onToast = callbacks.onToast;
     this.onHighlightHole = callbacks.onHighlightHole;
     this.onBackToMenu = callbacks.onBackToMenu;
+
+    this.clearDialog = document.createElement('dialog');
+    this.clearDialog.className = 'game-dialog';
+    this.clearDialog.id = 'composer-clear-dialog';
+    this.clearDialog.innerHTML = `
+      <div class="dialog-header">
+        <h2>Clear Track?</h2>
+        <button type="button" class="icon-btn" id="clear-dialog-close" aria-label="Close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <p>This will remove all notes from <strong>the current partiture</strong>. Are you sure?</p>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" class="btn btn-secondary" id="clear-dialog-cancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="clear-dialog-confirm">🧹 Clear All Notes</button>
+      </div>
+    `;
+    document.body.appendChild(this.clearDialog);
+    this.clearDialog.querySelector('#clear-dialog-close')?.addEventListener('click', () => this.clearDialog.close());
+    this.clearDialog.querySelector('#clear-dialog-cancel')?.addEventListener('click', () => this.clearDialog.close());
+    this.clearDialog.querySelector('#clear-dialog-confirm')?.addEventListener('click', () => {
+      this.clearDialog.close();
+      this.executeClear();
+    });
+
     this.render();
   }
 
@@ -87,6 +113,70 @@ export class FreePlayComposer {
     this.activeLiveNotes.clear();
     this.osInstance?.destroy();
     this.osInstance = null;
+    this.clearDialog.remove();
+  }
+
+  deleteSelectedNotes(): void {
+    if (this.selectedNoteIds.size === 0) return;
+    playUiClick();
+    haptics.tapButton();
+    const count = this.selectedNoteIds.size;
+    this.currentTrack.notes = this.currentTrack.notes.filter((n) => !this.selectedNoteIds.has(n.id));
+    this.selectedNoteIds.clear();
+    this.renderTimelineOnly();
+    this.updateDeleteButtonState();
+    this.onToast(`Deleted ${count} note${count > 1 ? 's' : ''}.`);
+  }
+
+  toggleRecord(): void {
+    playUiClick();
+    haptics.tapButton();
+    if (this.isRecording) {
+      this.isRecording = false;
+      this.activeLiveNotes.clear();
+      this.stopLiveHoldLoop();
+      this.stopPlayback();
+      this.onToast('Recording stopped!');
+    } else {
+      this.stopPlayback();
+      this.isRecording = true;
+      this.recordStartMs = performance.now();
+      this.onToast('● Recording live! Play the Ocarina.');
+    }
+    this.render();
+  }
+
+  togglePlay(): void {
+    playUiClick();
+    haptics.tapButton();
+    if (this.isPlaying) {
+      this.pausePlayback();
+    } else {
+      this.startPlayback();
+    }
+  }
+
+  requestClear(): void {
+    playUiClick();
+    haptics.tapButton();
+    if (this.currentTrack.notes.length === 0) {
+      this.onToast('Track is already empty.');
+      return;
+    }
+    this.clearDialog.showModal();
+  }
+
+  private executeClear(): void {
+    this.stopPlayback();
+    this.activeLiveNotes.clear();
+    this.stopLiveHoldLoop();
+    this.currentTrack.notes = [];
+    this.selectedNoteIds.clear();
+    this.recentOnsetIntervals = [];
+    this.lastOnsetPerf = 0;
+    this.renderTimelineOnly();
+    this.updateDeleteButtonState();
+    this.onToast('Partiture cleared.');
   }
 
   private getScrollViewport(): HTMLElement | null {
@@ -96,7 +186,7 @@ export class FreePlayComposer {
     return this.container.querySelector<HTMLElement>('#partiture-scroll');
   }
 
-  onLiveNoteStart(holeId: HoleId): void {
+  onLiveNoteStart(holeId: HoleId, pitchBend: PitchBend = 'normal'): void {
     const now = performance.now();
     this.recentMotifHoles.push(holeId);
     if (this.recentMotifHoles.length > 12) this.recentMotifHoles.shift();
@@ -108,7 +198,6 @@ export class FreePlayComposer {
       this.onToast(`✨ Melody Discovered: ${detected}!`);
     }
 
-    // Auto-calculate BPM from inter-onset intervals when enabled
     if (this.autoBpm && (this.isRecording || this.ocarinaToPartiture) && !this.isPlaying) {
       if (this.lastOnsetPerf > 0) {
         const dtSec = (now - this.lastOnsetPerf) / 1000;
@@ -136,7 +225,6 @@ export class FreePlayComposer {
       return;
     }
 
-    // Avoid duplicate entry if same hole already held
     if (this.activeLiveNotes.has(holeId)) return;
 
     const secPerBeat = 60 / Math.max(40, this.currentTrack.bpm);
@@ -146,7 +234,6 @@ export class FreePlayComposer {
       const rawStartBeat = Math.max(0, (now - this.recordStartMs) / 1000 / secPerBeat);
       startBeat = this.snap(rawStartBeat);
     } else {
-      // Polyphonic step input: simultaneous or near-simultaneous (<140ms) notes share startBeat!
       const isChord =
         this.activeLiveNotes.size > 0 || now - this.lastStepGroupStartPerf < 140;
       if (isChord) {
@@ -167,9 +254,10 @@ export class FreePlayComposer {
       holeId,
       startBeat,
       durationBeats: Math.max(0.25, this.snapBeats || 0.25),
+      pitchBend,
     };
     this.currentTrack.notes.push(newNote);
-    this.selectedNoteId = newNote.id;
+    this.selectedNoteIds = new Set([newNote.id]);
     this.currentTrack.updatedAt = Date.now();
     this.activeLiveNotes.set(holeId, { note: newNote, startPerf: now });
 
@@ -235,10 +323,6 @@ export class FreePlayComposer {
     if (hudBpm) hudBpm.textContent = `${this.currentTrack.bpm} BPM`;
   }
 
-  /**
-   * Smoothly scrolls horizontally only when the target beat approaches the right edge
-   * or falls behind the left edge, eliminating back-and-forth bouncing.
-   */
   private ensureBeatVisibleSmooth(beat: number, instant = false): void {
     const viewport = this.getScrollViewport();
     if (!viewport) return;
@@ -271,7 +355,6 @@ export class FreePlayComposer {
   render(): void {
     const activePl = this.playlists.find((p) => p.id === this.activePlaylistId) || this.playlists[0];
 
-    // Minimalist Top 50%: Only ← Menu button, clean track readout, and 5-track partiture
     this.container.innerHTML = `
       <div class="composer-top-clean">
         <div class="composer-minimal-bar">
@@ -287,7 +370,6 @@ export class FreePlayComposer {
       </div>
     `;
 
-    // Left Floating Dock inside Ocarina stage: Song / BPM / Playlist / Export
     this.dockLeft.innerHTML = `
       <div class="dock-card">
         <select id="comp-sample-select" class="text-input dock-input" aria-label="Load Sample Partiture">
@@ -337,7 +419,6 @@ export class FreePlayComposer {
       </div>
     `;
 
-    // Right Floating Dock inside Ocarina stage: Transport & Note Editing
     this.dockRight.innerHTML = `
       <div class="dock-card">
         <button type="button" class="btn ${this.ocarinaToPartiture ? 'is-on' : 'btn-secondary'} dock-btn" id="btn-comp-step-input" title="Add notes to partiture as you play">
@@ -354,7 +435,7 @@ export class FreePlayComposer {
         </div>
         <div class="dock-row">
           <button type="button" class="btn btn-secondary ${this.useMetronome ? 'is-on' : ''} dock-btn" id="btn-comp-metro">🥁 Metro</button>
-          <button type="button" class="btn btn-secondary dock-btn" id="btn-comp-del-note" ${this.selectedNoteId ? '' : 'disabled'}>🗑️ Del</button>
+          <button type="button" class="btn btn-secondary dock-btn" id="btn-comp-del-note" ${this.selectedNoteIds.size > 0 ? '' : 'disabled'}>🗑️ Del</button>
           <button type="button" class="btn btn-secondary dock-btn" id="btn-comp-clear">🧹 Clear</button>
         </div>
       </div>
@@ -410,12 +491,15 @@ export class FreePlayComposer {
               .map((n) => {
                 const left = n.startBeat * PX_PER_BEAT;
                 const width = Math.max(18, n.durationBeats * PX_PER_BEAT);
-                const selected = n.id === this.selectedNoteId;
+                const selected = this.selectedNoteIds.has(n.id);
+                const bend = n.pitchBend ?? 'normal';
+                const bendCls = bend === 'up' ? 'is-bend-up' : bend === 'down' ? 'is-bend-down' : '';
+                const bendBadge = bend === 'up' ? '↑' : bend === 'down' ? '↓' : '';
                 return `
-                  <div class="partiture-note ${selected ? 'is-selected' : ''}"
+                  <div class="partiture-note ${selected ? 'is-selected' : ''} ${bendCls}"
                        data-note-id="${n.id}"
                        style="left:${left}px;width:${width}px;background:${meta.color};">
-                    <span class="note-pill-text">${meta.ootButton}</span>
+                    <span class="note-pill-text">${meta.ootButton}${bendBadge}</span>
                     <span class="note-resize-handle" data-resize-note="${n.id}" title="Drag to resize"></span>
                   </div>
                 `;
@@ -431,6 +515,7 @@ export class FreePlayComposer {
       <div class="partiture-ruler" style="width:${widthPx}px">${rulerTicks}</div>
       <div class="partiture-lanes-wrap">
         ${lanesHtml}
+        <div class="selection-marquee" id="selection-marquee"></div>
         <div class="partiture-playhead" id="partiture-playhead" style="left:${84 + this.playheadBeat * PX_PER_BEAT}px"></div>
       </div>
     `;
@@ -444,31 +529,93 @@ export class FreePlayComposer {
 
   private bindTimelineInteractions(): void {
     const timeline = this.container.querySelector<HTMLElement>('#partiture-timeline');
-    if (!timeline) return;
+    const lanesWrap = this.container.querySelector<HTMLElement>('.partiture-lanes-wrap');
+    const marquee = this.container.querySelector<HTMLElement>('#selection-marquee');
+    if (!timeline || !lanesWrap) return;
 
+    // Empty grid: short click inserts a note; drag (>6px) draws a marquee selection box!
     timeline.querySelectorAll<HTMLElement>('.lane-grid').forEach((grid) => {
       grid.addEventListener('pointerdown', (e) => {
         if ((e.target as HTMLElement).closest('.partiture-note')) return;
-        const rect = grid.getBoundingClientRect();
-        const x = Math.max(0, e.clientX - rect.left);
-        const rawBeat = x / PX_PER_BEAT;
-        const startBeat = Math.max(0, this.snap(rawBeat));
-        const holeId = grid.dataset.gridHole as HoleId;
-        const note: PartitureNote = {
-          id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          holeId,
-          startBeat,
-          durationBeats: Math.max(0.5, this.snapBeats || 0.5),
+        const startClientX = e.clientX;
+        const startClientY = e.clientY;
+        const wrapRect = lanesWrap.getBoundingClientRect();
+        let isDraggingMarquee = false;
+
+        const onMove = (me: PointerEvent) => {
+          const dist = Math.hypot(me.clientX - startClientX, me.clientY - startClientY);
+          if (dist > 6) {
+            isDraggingMarquee = true;
+            if (marquee) {
+              const x1 = Math.min(startClientX, me.clientX) - wrapRect.left;
+              const y1 = Math.min(startClientY, me.clientY) - wrapRect.top;
+              const x2 = Math.max(startClientX, me.clientX) - wrapRect.left;
+              const y2 = Math.max(startClientY, me.clientY) - wrapRect.top;
+              marquee.style.display = 'block';
+              marquee.style.left = `${x1}px`;
+              marquee.style.top = `${y1}px`;
+              marquee.style.width = `${x2 - x1}px`;
+              marquee.style.height = `${y2 - y1}px`;
+
+              const selRect = {
+                left: Math.min(startClientX, me.clientX),
+                right: Math.max(startClientX, me.clientX),
+                top: Math.min(startClientY, me.clientY),
+                bottom: Math.max(startClientY, me.clientY),
+              };
+              const nextSel = new Set<string>();
+              timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((nEl) => {
+                const nr = nEl.getBoundingClientRect();
+                const intersects = !(
+                  nr.right < selRect.left ||
+                  nr.left > selRect.right ||
+                  nr.bottom < selRect.top ||
+                  nr.top > selRect.bottom
+                );
+                if (intersects && nEl.dataset.noteId) {
+                  nextSel.add(nEl.dataset.noteId);
+                }
+                nEl.classList.toggle('is-selected', intersects);
+              });
+              this.selectedNoteIds = nextSel;
+              this.updateDeleteButtonState();
+            }
+          }
         };
-        this.currentTrack.notes.push(note);
-        this.selectedNoteId = note.id;
-        ocarinaSynth.playOneShot(HOLE_MAP[holeId].frequency, 0.25, 0.7);
-        haptics.pressHole();
-        this.renderTimelineOnly();
-        this.updateDeleteButtonState();
+
+        const onUp = () => {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          if (marquee) marquee.style.display = 'none';
+
+          if (!isDraggingMarquee) {
+            const rect = grid.getBoundingClientRect();
+            const x = Math.max(0, startClientX - rect.left);
+            const rawBeat = x / PX_PER_BEAT;
+            const startBeat = Math.max(0, this.snap(rawBeat));
+            const holeId = grid.dataset.gridHole as HoleId;
+            const note: PartitureNote = {
+              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              holeId,
+              startBeat,
+              durationBeats: Math.max(0.5, this.snapBeats || 0.5),
+              pitchBend: 'normal',
+            };
+            this.currentTrack.notes.push(note);
+            this.selectedNoteIds = new Set([note.id]);
+            ocarinaSynth.playOneShot(getBentFrequency(holeId, 'normal'), 0.25, 0.7);
+            haptics.pressHole();
+            this.renderTimelineOnly();
+            this.updateDeleteButtonState();
+          }
+        };
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
       });
     });
 
+    // Note click (Ctrl+Click toggles multi-select; regular click selects; drag moves/resizes all selected)
     timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((el) => {
       const noteId = el.dataset.noteId!;
       const note = this.currentTrack.notes.find((n) => n.id === noteId);
@@ -476,30 +623,53 @@ export class FreePlayComposer {
 
       el.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        this.selectedNoteId = noteId;
-        this.updateDeleteButtonState();
-        timeline.querySelectorAll('.partiture-note').forEach((nEl) => {
-          nEl.classList.toggle('is-selected', (nEl as HTMLElement).dataset.noteId === noteId);
-        });
+
+        if (e.ctrlKey || e.metaKey) {
+          if (this.selectedNoteIds.has(noteId)) {
+            this.selectedNoteIds.delete(noteId);
+          } else {
+            this.selectedNoteIds.add(noteId);
+          }
+          this.updateDeleteButtonState();
+          timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((nEl) => {
+            nEl.classList.toggle('is-selected', this.selectedNoteIds.has(nEl.dataset.noteId || ''));
+          });
+          return;
+        }
+
+        if (!this.selectedNoteIds.has(noteId)) {
+          this.selectedNoteIds = new Set([noteId]);
+          this.updateDeleteButtonState();
+          timeline.querySelectorAll<HTMLElement>('.partiture-note').forEach((nEl) => {
+            nEl.classList.toggle('is-selected', this.selectedNoteIds.has(nEl.dataset.noteId || ''));
+          });
+        }
 
         const isResize = (e.target as HTMLElement).classList.contains('note-resize-handle');
         const startX = e.clientX;
         const startY = e.clientY;
-        const origBeat = note.startBeat;
-        const origDur = note.durationBeats;
-        const origLaneIdx = LANES_TOP_TO_BOTTOM.indexOf(note.holeId);
+        const targets = this.currentTrack.notes.filter((n) => this.selectedNoteIds.has(n.id));
+        const origState = targets.map((n) => ({
+          note: n,
+          beat: n.startBeat,
+          dur: n.durationBeats,
+          laneIdx: LANES_TOP_TO_BOTTOM.indexOf(n.holeId),
+          el: timeline.querySelector<HTMLElement>(`.partiture-note[data-note-id="${n.id}"]`),
+        }));
 
         const onMove = (me: PointerEvent) => {
           const dxBeats = (me.clientX - startX) / PX_PER_BEAT;
-          if (isResize) {
-            note.durationBeats = Math.max(0.25, this.snap(origDur + dxBeats));
-            el.style.width = `${Math.max(18, note.durationBeats * PX_PER_BEAT)}px`;
-          } else {
-            note.startBeat = Math.max(0, this.snap(origBeat + dxBeats));
-            el.style.left = `${note.startBeat * PX_PER_BEAT}px`;
-            const dyLanes = Math.round((me.clientY - startY) / 42);
-            const nextIdx = Math.max(0, Math.min(LANES_TOP_TO_BOTTOM.length - 1, origLaneIdx + dyLanes));
-            note.holeId = LANES_TOP_TO_BOTTOM[nextIdx];
+          const dyLanes = Math.round((me.clientY - startY) / 42);
+          for (const item of origState) {
+            if (isResize) {
+              item.note.durationBeats = Math.max(0.25, this.snap(item.dur + dxBeats));
+              if (item.el) item.el.style.width = `${Math.max(18, item.note.durationBeats * PX_PER_BEAT)}px`;
+            } else {
+              item.note.startBeat = Math.max(0, this.snap(item.beat + dxBeats));
+              if (item.el) item.el.style.left = `${item.note.startBeat * PX_PER_BEAT}px`;
+              const nextIdx = Math.max(0, Math.min(LANES_TOP_TO_BOTTOM.length - 1, item.laneIdx + dyLanes));
+              item.note.holeId = LANES_TOP_TO_BOTTOM[nextIdx];
+            }
           }
         };
 
@@ -518,7 +688,7 @@ export class FreePlayComposer {
 
   private updateDeleteButtonState(): void {
     const delBtn = this.dockRight.querySelector<HTMLButtonElement>('#btn-comp-del-note');
-    if (delBtn) delBtn.disabled = !this.selectedNoteId;
+    if (delBtn) delBtn.disabled = this.selectedNoteIds.size === 0;
   }
 
   private bindEvents(): void {
@@ -536,7 +706,7 @@ export class FreePlayComposer {
       haptics.tapButton();
       this.stopPlayback();
       this.currentTrack = structuredClone(sample);
-      this.selectedNoteId = null;
+      this.selectedNoteIds.clear();
       this.recentOnsetIntervals = [];
       this.lastOnsetPerf = 0;
       this.onToast(`🎼 Loaded sample: ${sample.title}`);
@@ -581,34 +751,8 @@ export class FreePlayComposer {
       btn.textContent = `✍️ Input ${this.ocarinaToPartiture ? 'On' : 'Off'}`;
     });
 
-    this.dockRight.querySelector('#btn-comp-rec')?.addEventListener('click', () => {
-      playUiClick();
-      haptics.tapButton();
-      if (this.isRecording) {
-        this.isRecording = false;
-        this.activeLiveNotes.clear();
-        this.stopLiveHoldLoop();
-        this.stopPlayback();
-        this.onToast('Recording stopped!');
-      } else {
-        this.stopPlayback();
-        this.isRecording = true;
-        this.recordStartMs = performance.now();
-        this.onToast('● Recording live! Play the Ocarina.');
-      }
-      this.render();
-    });
-
-    this.dockRight.querySelector('#btn-comp-play')?.addEventListener('click', () => {
-      playUiClick();
-      haptics.tapButton();
-      if (this.isPlaying) {
-        this.pausePlayback();
-      } else {
-        this.startPlayback();
-      }
-    });
-
+    this.dockRight.querySelector('#btn-comp-rec')?.addEventListener('click', () => this.toggleRecord());
+    this.dockRight.querySelector('#btn-comp-play')?.addEventListener('click', () => this.togglePlay());
     this.dockRight.querySelector('#btn-comp-stop')?.addEventListener('click', () => {
       playUiClick();
       haptics.tapButton();
@@ -622,30 +766,8 @@ export class FreePlayComposer {
       (e.currentTarget as HTMLButtonElement).classList.toggle('is-on', this.useMetronome);
     });
 
-    this.dockRight.querySelector('#btn-comp-del-note')?.addEventListener('click', () => {
-      if (!this.selectedNoteId) return;
-      playUiClick();
-      haptics.tapButton();
-      this.currentTrack.notes = this.currentTrack.notes.filter((n) => n.id !== this.selectedNoteId);
-      this.selectedNoteId = null;
-      this.renderTimelineOnly();
-      this.updateDeleteButtonState();
-    });
-
-    this.dockRight.querySelector('#btn-comp-clear')?.addEventListener('click', () => {
-      playUiClick();
-      haptics.tapButton();
-      this.stopPlayback();
-      this.activeLiveNotes.clear();
-      this.stopLiveHoldLoop();
-      this.currentTrack.notes = [];
-      this.selectedNoteId = null;
-      this.recentOnsetIntervals = [];
-      this.lastOnsetPerf = 0;
-      this.renderTimelineOnly();
-      this.updateDeleteButtonState();
-      this.onToast('Partiture cleared.');
-    });
+    this.dockRight.querySelector('#btn-comp-del-note')?.addEventListener('click', () => this.deleteSelectedNotes());
+    this.dockRight.querySelector('#btn-comp-clear')?.addEventListener('click', () => this.requestClear());
 
     this.dockLeft.querySelector('#comp-playlist-select')?.addEventListener('change', (e) => {
       this.activePlaylistId = (e.target as HTMLSelectElement).value;
@@ -733,6 +855,7 @@ export class FreePlayComposer {
       }
       this.stopPlayback();
       this.currentTrack = parsed;
+      this.selectedNoteIds.clear();
       haptics.victory();
       this.onToast(`📥 Loaded "${parsed.title}" (${parsed.notes.length} notes)!`);
       this.render();
@@ -768,7 +891,7 @@ export class FreePlayComposer {
         if (!this.playedNoteIds.has(n.id) && this.playheadBeat >= n.startBeat) {
           this.playedNoteIds.add(n.id);
           const durSec = n.durationBeats * secPerBeat;
-          ocarinaSynth.playOneShot(HOLE_MAP[n.holeId].frequency, durSec, 0.8);
+          ocarinaSynth.playOneShot(getBentFrequency(n.holeId, n.pitchBend ?? 'normal'), durSec, 0.8);
           this.onHighlightHole(n.holeId, true);
           window.setTimeout(() => this.onHighlightHole(n.holeId, false), Math.min(400, durSec * 900));
         }

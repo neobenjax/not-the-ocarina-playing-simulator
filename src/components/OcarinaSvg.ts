@@ -1,4 +1,4 @@
-import { HOLE_MAP, HoleId, KeyMapping, OCARINA_HOLES } from '../types';
+import { HOLE_MAP, HoleId, KeyMapping, OCARINA_HOLES, PitchBend } from '../types';
 import { formatKeyCode } from '../storage/persistence';
 
 export interface OcarinaTheme {
@@ -36,6 +36,7 @@ export interface OcarinaSvgCallbacks {
   onHoleUp: (holeId: HoleId) => void;
   onBlowDown: () => void;
   onBlowUp: () => void;
+  onPitchBendChange?: (bend: PitchBend) => void;
 }
 
 export function isTouchPrimaryDevice(): boolean {
@@ -55,7 +56,8 @@ export class OcarinaSvgController {
   private hideKeyBadges = false;
   private activeHoles = new Set<HoleId>();
   private isBlowing = false;
-  private activePointers = new Map<number, HoleId | 'blow'>();
+  private pitchBend: PitchBend = 'normal';
+  private activePointers = new Map<number, HoleId | 'blow' | 'pitch-up' | 'pitch-down'>();
 
   constructor(container: HTMLElement, keyMapping: KeyMapping, callbacks: OcarinaSvgCallbacks) {
     this.container = container;
@@ -110,6 +112,13 @@ export class OcarinaSvgController {
     blowBtn?.classList.toggle('is-blowing', active);
     windStream?.classList.toggle('is-blowing', active);
     svgRoot?.classList.toggle('is-blowing', active);
+    this.updateNoteReadout();
+  }
+
+  setPitchBend(bend: PitchBend): void {
+    this.pitchBend = bend;
+    this.container.querySelector('[data-pitch="up"]')?.classList.toggle('is-active', bend === 'up');
+    this.container.querySelector('[data-pitch="down"]')?.classList.toggle('is-active', bend === 'down');
     this.updateNoteReadout();
   }
 
@@ -217,6 +226,18 @@ export class OcarinaSvgController {
         <circle cx="176" cy="222" r="8" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.8" opacity="0.85" />
         <circle cx="446" cy="238" r="9" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.8" opacity="0.85" />
         <circle cx="468" cy="206" r="7.5" fill="${t.holeFill}" stroke="${t.holeRim}" stroke-width="1.8" opacity="0.85" />
+
+        <!-- 2 Pitch-Bend Control Buttons on Ocarina Layout (Up / Down) -->
+        <g class="ocarina-pitch-btn ${this.pitchBend === 'up' ? 'is-active' : ''}" data-pitch="up" role="button" tabindex="0" aria-label="Pitch Bend Up (+1 semitone)">
+          <rect x="28" y="136" width="54" height="44" rx="12" fill="#0b1633" stroke="#4ade80" stroke-width="2.5" />
+          <text x="55" y="156" text-anchor="middle" fill="#4ade80" font-size="14" font-weight="800">▲ +1</text>
+          <text x="55" y="172" text-anchor="middle" fill="#a6b4d0" font-size="9.5" font-weight="700">${showBadges ? formatKeyCode(this.keyMapping.pitchUp) : 'PITCH'}</text>
+        </g>
+        <g class="ocarina-pitch-btn ${this.pitchBend === 'down' ? 'is-active' : ''}" data-pitch="down" role="button" tabindex="0" aria-label="Pitch Bend Down (-1 semitone)">
+          <rect x="28" y="190" width="54" height="44" rx="12" fill="#0b1633" stroke="#f87171" stroke-width="2.5" />
+          <text x="55" y="210" text-anchor="middle" fill="#f87171" font-size="14" font-weight="800">▼ -1</text>
+          <text x="55" y="226" text-anchor="middle" fill="#a6b4d0" font-size="9.5" font-weight="700">${showBadges ? formatKeyCode(this.keyMapping.pitchDown) : 'PITCH'}</text>
+        </g>
 
         <!-- 5 Interactive Musical Holes -->
         ${OCARINA_HOLES.map((hole) => {
@@ -339,5 +360,33 @@ export class OcarinaSvgController {
       blowBtn.addEventListener('pointercancel', releaseBlow);
       blowBtn.addEventListener('lostpointercapture', releaseBlow);
     }
+
+    this.container.querySelectorAll<SVGGElement>('[data-pitch]').forEach((el) => {
+      const dir = el.dataset.pitch as 'up' | 'down';
+      const pointerKey = dir === 'up' ? 'pitch-up' : 'pitch-down';
+
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore
+        }
+        this.activePointers.set(e.pointerId, pointerKey);
+        this.setPitchBend(dir);
+        this.callbacks.onPitchBendChange?.(dir);
+      });
+
+      const releasePitch = (e: PointerEvent) => {
+        if (this.activePointers.get(e.pointerId) !== pointerKey) return;
+        this.activePointers.delete(e.pointerId);
+        this.setPitchBend('normal');
+        this.callbacks.onPitchBendChange?.('normal');
+      };
+
+      el.addEventListener('pointerup', releasePitch);
+      el.addEventListener('pointercancel', releasePitch);
+      el.addEventListener('lostpointercapture', releasePitch);
+    });
   }
 }

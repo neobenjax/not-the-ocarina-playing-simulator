@@ -1,5 +1,13 @@
 import './styles/main.css';
-import { HoleId, HOLE_MAP, KeyMapping, AppSettings, CustomSvgSkin, Playlist, ArcadeHighScore } from './types';
+import {
+  AppSettings,
+  ArcadeHighScore,
+  CustomSvgSkin,
+  HOLE_MAP,
+  HoleId,
+  KeyMapping,
+  Playlist,
+} from './types';
 import {
   loadCustomSkins,
   loadHighScores,
@@ -24,6 +32,9 @@ import { SkinGalleryModal } from './components/SkinGalleryModal';
 import { OCARINA_SKINS } from './data/ocarinaSkins';
 import { FreePlayComposer } from './modes/freePlay/FreePlayComposer';
 import { ArcadeMode } from './modes/arcade/ArcadeMode';
+import { initPwaInstall, toggleFullscreen, triggerPwaInstall } from './utils/pwaFullscreen';
+
+type AppScreen = 'title' | 'composer' | 'arcade';
 
 class OcarinaApp {
   private root: HTMLElement;
@@ -33,9 +44,9 @@ class OcarinaApp {
   private customSkins: CustomSvgSkin[];
   private playlists: Playlist[];
   private highScores: Record<string, ArcadeHighScore>;
-  private activeMode: 'free' | 'arcade' = 'free';
+  private activeScreen: AppScreen = 'title';
 
-  private ocarinaCtrl!: OcarinaSvgController;
+  private ocarinaCtrl: OcarinaSvgController | null = null;
   private keyMapModal!: KeyMapModal;
   private settingsModal!: SettingsModal;
   private skinGalleryModal!: SkinGalleryModal;
@@ -55,10 +66,10 @@ class OcarinaApp {
     this.playlists = loadPlaylists();
     this.highScores = loadHighScores();
 
+    initPwaInstall();
     this.applyAudioAndHaptics();
-    this.renderShell();
-    this.applySelectedSkin();
     this.initModals();
+    this.renderScreen();
     this.bindKeyboard();
   }
 
@@ -73,27 +84,96 @@ class OcarinaApp {
     }
   }
 
-  private renderShell(): void {
+  private navigateTo(screen: AppScreen): void {
+    playUiClick();
+    haptics.tapButton();
+    this.freePlayComposer?.destroy();
+    this.freePlayComposer = null;
+    this.arcadeMode?.destroy();
+    this.arcadeMode = null;
+    this.ocarinaCtrl = null;
+    this.activeScreen = screen;
+    this.renderScreen();
+  }
+
+  private renderScreen(): void {
+    if (this.activeScreen === 'title') {
+      this.renderTitleScreen();
+    } else {
+      this.renderModeScreen();
+    }
+  }
+
+  private renderTitleScreen(): void {
+    const isFs = Boolean(document.fullscreenElement);
     this.root.innerHTML = `
-      <div class="app-shell">
-        <header class="top-hud">
-          <div class="brand">
-            <img class="brand-emblem" src="/not-the-ocarina-playing-simulator/assets/ocarina-emblem.jpg" alt="Ocarina Emblem" />
-            <div>
-              <h1 class="brand-title">Ocarina of Time Simulator</h1>
-              <p class="brand-subtitle">Hyrule Partiture &amp; Arcade Rhythm</p>
-            </div>
+      <div class="title-screen">
+        <div class="title-backdrop">
+          <img src="/not-the-ocarina-playing-simulator/assets/title-hero-art.jpg" alt="" class="title-hero-img" />
+          <div class="title-scrim"></div>
+        </div>
+
+        <header class="title-top-bar">
+          <div class="title-badge">HYRULE RHYTHM EDITION</div>
+          <div class="title-utility-btns">
+            <button type="button" class="btn btn-secondary" id="btn-skin-gallery">🎨 Skins</button>
+            <button type="button" class="btn btn-secondary" id="btn-key-map">⌨️ Keys</button>
+            <button type="button" class="btn btn-secondary ${this.settings.bgmEnabled ? 'is-on' : ''}" id="btn-toggle-bgm">
+              🎶 BGM ${this.settings.bgmEnabled ? 'On' : 'Off'}
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-settings">⚙️ Settings</button>
+            <button type="button" class="btn btn-secondary" id="btn-fullscreen" title="Toggle Fullscreen">
+              ${isFs ? '🗗 Exit FS' : '⛶ Fullscreen'}
+            </button>
+            <button type="button" class="btn btn-gold" id="btn-install-pwa">📲 Install App</button>
           </div>
+        </header>
 
-          <nav class="mode-tabs" aria-label="Game Modes">
-            <button type="button" class="mode-tab ${this.activeMode === 'free' ? 'is-active' : ''}" id="tab-mode-free">
-              🎵 Free Play &amp; Composer
-            </button>
-            <button type="button" class="mode-tab ${this.activeMode === 'arcade' ? 'is-active' : ''}" id="tab-mode-arcade">
-              🥁 Arcade Mode
-            </button>
-          </nav>
+        <main class="title-center">
+          <img src="/not-the-ocarina-playing-simulator/assets/ocarina-emblem.jpg" alt="Ocarina Emblem" class="title-crest" />
+          <h1 class="game-main-title">NOT THE OCARINA PLAYING SIMULATOR</h1>
+          <p class="game-main-subtitle">Play the Ocarina of Time · Compose Partitures · Master Taiko &amp; PIU Phoenix 2 Arcade</p>
 
+          <div class="title-mode-cards">
+            <button type="button" class="mode-launch-card is-composer" id="launch-mode-composer">
+              <span class="mode-card-icon">🎵</span>
+              <div class="mode-card-body">
+                <strong>MODE 1 · FREE PLAY &amp; COMPOSER</strong>
+                <p>Play the Ocarina directly into a musical partiture, load Zelda samples, edit timelines &amp; export MP3s.</p>
+              </div>
+              <span class="mode-card-cta">PLAY ▶</span>
+            </button>
+
+            <button type="button" class="mode-launch-card is-arcade" id="launch-mode-arcade">
+              <span class="mode-card-icon">🥁</span>
+              <div class="mode-card-body">
+                <strong>MODE 2 · ARCADE RHYTHM</strong>
+                <p>9+ Legend of Zelda charts, Novice/Original assist, Metronome &amp; Pump It Up Phoenix 2 SSS+ scoring.</p>
+              </div>
+              <span class="mode-card-cta">PLAY ▶</span>
+            </button>
+          </div>
+        </main>
+      </div>
+      <div id="toast-banner" class="toast-banner" role="status" aria-live="polite"></div>
+    `;
+
+    this.root.querySelector('#launch-mode-composer')?.addEventListener('click', () => this.navigateTo('composer'));
+    this.root.querySelector('#launch-mode-arcade')?.addEventListener('click', () => this.navigateTo('arcade'));
+    this.bindCommonUtilityButtons();
+  }
+
+  private renderModeScreen(): void {
+    const isComposer = this.activeScreen === 'composer';
+    const isFs = Boolean(document.fullscreenElement);
+
+    this.root.innerHTML = `
+      <div class="game-screen-shell">
+        <header class="game-mode-hud">
+          <div class="hud-left">
+            <button type="button" class="btn btn-secondary" id="btn-back-title">← Menu</button>
+            <h1 class="hud-mode-title">${isComposer ? '🎵 Free Play & Composer' : '🥁 Arcade Rhythm'}</h1>
+          </div>
           <div class="hud-actions">
             <button type="button" class="btn btn-secondary" id="btn-skin-gallery">🎨 Skins</button>
             <button type="button" class="btn btn-secondary" id="btn-key-map">⌨️ Keys</button>
@@ -101,16 +181,22 @@ class OcarinaApp {
               🎶 BGM ${this.settings.bgmEnabled ? 'On' : 'Off'}
             </button>
             <button type="button" class="btn btn-secondary" id="btn-settings">⚙️ Settings</button>
+            <button type="button" class="btn btn-secondary" id="btn-fullscreen" title="Toggle Fullscreen">
+              ${isFs ? '🗗' : '⛶'}
+            </button>
           </div>
         </header>
 
-        <main class="main-workspace">
-          <section id="mode-panel" class="panel-card"></section>
-          <section id="ocarina-stage" class="panel-card ocarina-stage"></section>
+        <main class="game-screen-body">
+          <section id="mode-panel" class="panel-card mode-top-workspace"></section>
+          <section id="ocarina-stage" class="panel-card ocarina-stage ocarina-bottom-dock"></section>
         </main>
       </div>
       <div id="toast-banner" class="toast-banner" role="status" aria-live="polite"></div>
     `;
+
+    this.root.querySelector('#btn-back-title')?.addEventListener('click', () => this.navigateTo('title'));
+    this.bindCommonUtilityButtons();
 
     const stageEl = this.root.querySelector<HTMLElement>('#ocarina-stage')!;
     this.ocarinaCtrl = new OcarinaSvgController(stageEl, this.keyMapping, {
@@ -120,30 +206,19 @@ class OcarinaApp {
       onBlowUp: () => this.handleBlowUp(),
     });
     this.ocarinaCtrl.setHideKeyBadges(this.settings.forceHideKeyBadges);
+    this.applySelectedSkin();
 
-    this.renderModePanel();
-    this.bindHudEvents();
-  }
-
-  private renderModePanel(): void {
-    const panel = this.root.querySelector<HTMLElement>('#mode-panel');
-    if (!panel) return;
-    if (this.activeMode === 'free') {
-      this.arcadeMode?.destroy();
-      this.arcadeMode = null;
-      this.freePlayComposer?.destroy();
+    const panel = this.root.querySelector<HTMLElement>('#mode-panel')!;
+    if (isComposer) {
       this.freePlayComposer = new FreePlayComposer(panel, this.playlists, {
         onPlaylistsChange: (updated) => {
           this.playlists = updated;
           savePlaylists(updated);
         },
         onToast: (msg) => this.showToast(msg),
-        onHighlightHole: (holeId, active) => this.ocarinaCtrl.setHoleActive(holeId, active),
+        onHighlightHole: (holeId, active) => this.ocarinaCtrl?.setHoleActive(holeId, active),
       });
     } else {
-      this.freePlayComposer?.destroy();
-      this.freePlayComposer = null;
-      this.arcadeMode?.destroy();
       this.arcadeMode = new ArcadeMode(panel, this.settings, this.playlists, this.highScores, {
         onSettingsChange: (s) => {
           this.settings = s;
@@ -159,29 +234,17 @@ class OcarinaApp {
     }
   }
 
-  private bindHudEvents(): void {
-    this.root.querySelector('#tab-mode-free')?.addEventListener('click', () => {
-      playUiClick();
-      haptics.tapButton();
-      this.activeMode = 'free';
-      this.updateModeTabs();
-      this.renderModePanel();
-    });
-
-    this.root.querySelector('#tab-mode-arcade')?.addEventListener('click', () => {
-      playUiClick();
-      haptics.tapButton();
-      this.activeMode = 'arcade';
-      this.updateModeTabs();
-      this.renderModePanel();
-    });
-
+  private bindCommonUtilityButtons(): void {
     this.root.querySelector('#btn-key-map')?.addEventListener('click', () => {
       this.keyMapModal.open(this.keyMapping, this.settings.breathMode);
     });
 
     this.root.querySelector('#btn-settings')?.addEventListener('click', () => {
       this.settingsModal.open(this.settings);
+    });
+
+    this.root.querySelector('#btn-skin-gallery')?.addEventListener('click', () => {
+      this.skinGalleryModal.open(this.selectedSkinId, this.customSkins);
     });
 
     this.root.querySelector('#btn-toggle-bgm')?.addEventListener('click', (e) => {
@@ -195,12 +258,27 @@ class OcarinaApp {
       btn.textContent = `🎶 BGM ${this.settings.bgmEnabled ? 'On' : 'Off'}`;
     });
 
-    this.root.querySelector('#btn-skin-gallery')?.addEventListener('click', () => {
-      this.skinGalleryModal.open(this.selectedSkinId, this.customSkins);
+    this.root.querySelector('#btn-fullscreen')?.addEventListener('click', async (e) => {
+      playUiClick();
+      haptics.tapButton();
+      const entered = await toggleFullscreen();
+      const btn = e.currentTarget as HTMLButtonElement;
+      if (this.activeScreen === 'title') {
+        btn.textContent = entered ? '🗗 Exit FS' : '⛶ Fullscreen';
+      } else {
+        btn.textContent = entered ? '🗗' : '⛶';
+      }
+    });
+
+    this.root.querySelector('#btn-install-pwa')?.addEventListener('click', () => {
+      playUiClick();
+      haptics.tapButton();
+      void triggerPwaInstall((msg) => this.showToast(msg));
     });
   }
 
   private applySelectedSkin(): void {
+    if (!this.ocarinaCtrl) return;
     const builtIn = OCARINA_SKINS.find((s) => s.id === this.selectedSkinId);
     if (builtIn) {
       this.ocarinaCtrl.setTheme(builtIn);
@@ -214,25 +292,20 @@ class OcarinaApp {
     this.ocarinaCtrl.setTheme(OCARINA_SKINS[0]);
   }
 
-  private updateModeTabs(): void {
-    this.root.querySelector('#tab-mode-free')?.classList.toggle('is-active', this.activeMode === 'free');
-    this.root.querySelector('#tab-mode-arcade')?.classList.toggle('is-active', this.activeMode === 'arcade');
-  }
-
   private initModals(): void {
     this.keyMapModal = new KeyMapModal(this.keyMapping, this.settings.breathMode, (newMap, breathMode) => {
       this.keyMapping = newMap;
       this.settings.breathMode = breathMode;
       saveKeyMapping(newMap);
       saveSettings(this.settings);
-      this.ocarinaCtrl.setKeyMapping(newMap);
+      this.ocarinaCtrl?.setKeyMapping(newMap);
     });
 
     this.settingsModal = new SettingsModal(this.settings, (newSettings) => {
       this.settings = newSettings;
       saveSettings(newSettings);
       this.applyAudioAndHaptics();
-      this.ocarinaCtrl.setHideKeyBadges(newSettings.forceHideKeyBadges);
+      this.ocarinaCtrl?.setHideKeyBadges(newSettings.forceHideKeyBadges);
     });
 
     this.skinGalleryModal = new SkinGalleryModal(this.selectedSkinId, this.customSkins, {
@@ -265,6 +338,7 @@ class OcarinaApp {
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       if (document.querySelector('dialog[open]')) return;
+      if (this.activeScreen === 'title') return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
@@ -297,10 +371,10 @@ class OcarinaApp {
     if (!this.heldHoles.includes(holeId)) {
       this.heldHoles.push(holeId);
     }
-    this.ocarinaCtrl.setHoleActive(holeId, true);
+    this.ocarinaCtrl?.setHoleActive(holeId, true);
     haptics.pressHole();
 
-    if (this.activeMode === 'arcade' && this.arcadeMode?.onPlayerInput(holeId)) {
+    if (this.activeScreen === 'arcade' && this.arcadeMode?.onPlayerInput(holeId)) {
       return;
     }
 
@@ -312,7 +386,7 @@ class OcarinaApp {
 
   private handleHoleUp(holeId: HoleId): void {
     this.heldHoles = this.heldHoles.filter((id) => id !== holeId);
-    this.ocarinaCtrl.setHoleActive(holeId, false);
+    this.ocarinaCtrl?.setHoleActive(holeId, false);
     this.freePlayComposer?.onLiveNoteEnd(holeId);
 
     if (this.heldHoles.length > 0 && (!this.settings.breathMode || this.isBlowKeyHeld)) {
@@ -325,7 +399,7 @@ class OcarinaApp {
 
   private handleBlowDown(): void {
     this.isBlowKeyHeld = true;
-    this.ocarinaCtrl.setBlowActive(true);
+    this.ocarinaCtrl?.setBlowActive(true);
     haptics.blowAir();
 
     if (this.heldHoles.length > 0) {
@@ -336,7 +410,7 @@ class OcarinaApp {
 
   private handleBlowUp(): void {
     this.isBlowKeyHeld = false;
-    this.ocarinaCtrl.setBlowActive(false);
+    this.ocarinaCtrl?.setBlowActive(false);
     if (this.settings.breathMode) {
       ocarinaSynth.stopNote();
     }

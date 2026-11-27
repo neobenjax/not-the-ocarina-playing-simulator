@@ -77,3 +77,16 @@ not-the-ocarina-playing-simulator/
 | `hole-left` | `C-Left` | B5 | 987.77 | `I` | `#ff6b35` (Orange) |
 | `hole-up` | `C-Up` | D6 | 1174.66 | `U` | `#e74c3c` (Red) |
 | `blow` | Breath | Air Flow | — | `Space` | `#00d2ff` (Cyan) |
+
+
+---
+
+## 6. Stage 2 Screen State Machine & PWA Architecture
+- **Screen Router (`AppScreen`)**: `'title' | 'composer' | 'arcade-select' | 'arcade-play' | 'arcade-results'`
+- **PWA Assets**:
+  - `public/manifest.webmanifest` (`display: "standalone"`, `theme_color: "#0b1021"`, `background_color: "#070b18"`)
+  - `public/sw.js` (network-first navigation + static asset caching for offline/installability)
+- **Stage 2 Gemini Nano Banana Assets**:
+  - `public/assets/title-hero-art.jpg`
+  - `public/assets/arcade-stage-banner.jpg`
+  - `public/assets/results-victory-art.jpg`

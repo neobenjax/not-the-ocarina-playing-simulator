@@ -184,3 +184,67 @@ Every story below is **I**ndependent, **N**egotiable, **V**aluable, **E**stimabl
   - [ ] Write Playwright E2E test suite (`tests/e2e.spec.ts`).
   - [ ] Run local E2E suite, fix any defects, merge to `main`.
   - [ ] Verify GitHub Actions deployment succeeds and run Playwright verification against `https://neobenjax.github.io/not-the-ocarina-playing-simulator/`.
+
+
+---
+
+## Stage 2 Milestones (MVPs 6–9)
+
+## Milestone 6: Dedicated Game Screens, Title Art, Fullscreen & PWA (`feature/m6-game-screens-pwa-fullscreen`)
+
+### US-6.1: Title Screen & Dedicated Mode Screens
+**Card**: As a player, I want a dedicated Title Screen displaying "Not The Ocarina Playing Simulator" with game illustrations and separate full-screen views for each mode, so that it feels like a real video game rather than a web dashboard.
+- **Confirmation (Acceptance Criteria)**:
+  - **Given** I open the application
+  - **When** the page loads
+  - **Then** I see the Title Screen with the game title, Gemini Nano Banana key art, and buttons to enter Mode 1 (Composer) or Mode 2 (Arcade), each opening its own dedicated screen with a Back to Menu button.
+- **Tasks**:
+  - [ ] Build `TitleScreen` with `title-hero-art.jpg` and arcade mode cards.
+  - [ ] Refactor `main.ts` into a screen-based router (`title`, `composer`, `arcade-select`, `arcade-play`, `arcade-results`).
+
+### US-6.2: Fullscreen Toggle & PWA Installability
+**Card**: As a mobile or desktop player, I want a Fullscreen button and PWA "Add to Home Screen" support, so that I can play without browser chrome and launch the game like a native app.
+- **Confirmation (Acceptance Criteria)**:
+  - **Given** I tap the Fullscreen button or Install App button
+  - **When** supported by the browser
+  - **Then** the game toggles fullscreen mode, and the PWA manifest + service worker allow installing the app to the home screen.
+- **Tasks**:
+  - [ ] Add `public/manifest.webmanifest` and `public/sw.js`.
+  - [ ] Implement Fullscreen toggle and `beforeinstallprompt` + iOS install helper.
+
+---
+
+## Milestone 7: Composer Ocarina-First Input, Sample Dropdown & Auto-Scroll (`feature/m7-composer-ocarina-input-samples`)
+
+### US-7.1: Sample Partitures Dropdown & Ocarina-First Note Input
+**Card**: As a composer, I want a dropdown preloaded with all Zelda sample songs and the ability to insert notes into the partiture simply by playing the Ocarina, so that I can learn and compose naturally using the instrument.
+- **Confirmation (Acceptance Criteria)**:
+  - **Given** I am in Mode 1 (Composer)
+  - **When** I select a sample song from the dropdown, its partiture loads; and when I hit a note on the Ocarina, that note is added to the partiture automatically.
+- **Tasks**:
+  - [ ] Add Sample Partiture dropdown with all 9 Zelda songs + saved playlist tracks.
+  - [ ] Insert notes into the partiture on Ocarina hole hits (Step Input & Record modes).
+  - [ ] Auto-scroll the partiture timeline horizontally during playback and recording.
+  - [ ] Anchor the Ocarina SVG at the bottom of the Composer screen.
+
+---
+
+## Milestone 8: Taiko-Style Arcade Stage & Results Redesign (`feature/m8-arcade-taiko-stage-redesign`)
+
+### US-8.1: Dedicated Song Select, Gameplay Stage & Results Screens
+**Card**: As an arcade player, I want a dedicated Song Select screen, a Taiko-style Gameplay Stage with the highway at the top and Ocarina at the bottom, and an illustrated Results screen, so that Arcade Mode feels like Taiko Web & Pump It Up.
+- **Confirmation (Acceptance Criteria)**:
+  - **Given** I enter Mode 2 (Arcade)
+  - **When** I pick any of the 9+ Zelda songs and start the stage
+  - **Then** the Gameplay Stage displays the festival HUD, Soul Gauge, scrolling highway at the top, stage art in the middle, and interactive Ocarina at the bottom, followed by a celebratory Results screen.
+- **Tasks**:
+  - [ ] Build dedicated `arcade-select` screen with clear song cards + quick selector for all 9+ songs.
+  - [ ] Redesign `arcade-play` layout with top Soul Gauge/HUD, highway, `arcade-stage-banner.jpg`, and bottom Ocarina.
+  - [ ] Redesign `arcade-results` screen with `results-victory-art.jpg` and PIU Phoenix 2 breakdown.
+
+---
+
+## Milestone 9: Stage 2 E2E Verification & Live GitHub Pages Deployment (`feature/m9-stage2-e2e-deploy`)
+- **Tasks**:
+  - [ ] Update `tests/e2e.spec.ts` for all Stage 2 screens, sample dropdowns, Ocarina-to-partiture input, auto-scroll, and PWA manifest.
+  - [ ] Merge to `main`, deploy via GitHub Actions, and verify live on `https://neobenjax.github.io/not-the-ocarina-playing-simulator/`.

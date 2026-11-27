@@ -83,3 +83,26 @@ Every milestone is developed on a dedicated `feature/*` branch, tested, pushed, 
 3. **Milestone 3 (`feature/m3-free-play-composer-mp3`)**: Mode 1 Free Play, Live Recording, Partiture Timeline Editor, Playlists, `.txt` Partiture Export/Import, MP3 Export.
 4. **Milestone 4 (`feature/m4-arcade-mode-piu-phoenix2`)**: Mode 2 Arcade Play, Taiko horizontal highway, 9+ Zelda songs, Novice/Original, Metronome, >10 miss Game Over, PIU Phoenix 2 scoring, Offset calibration, Custom song play.
 5. **Milestone 5 (`feature/m5-e2e-verification-polish`)**: Comprehensive Playwright E2E tests (desktop & mobile), accessibility & modern-web-guidance audit, live GitHub Pages deployment & online verification.
+
+
+---
+
+## 4. Stage 2 — Game-First Screen Architecture & Enhancements
+
+### 4.1 Dedicated Game Screens (Single-Focus Views)
+Inspired by *Taiko Web* (`taikoapp.uk/#game`) and arcade rhythm games:
+1. **Title / Main Game Screen**: Displays **"NOT THE OCARINA PLAYING SIMULATOR"**, Gemini Nano Banana hero key-art (`title-hero-art.jpg`), big arcade mode launch buttons (**Mode 1: Free Play & Composer**, **Mode 2: Arcade Rhythm**), and quick actions (**Skins**, **Keys**, **Settings**, **Fullscreen**, **Install App**).
+2. **Mode 1 Composer Screen**: Full-screen game layout with Partiture Timeline + **Sample Song Dropdown** (all 9 Zelda samples + user playlists) at the top, and the **Interactive Ocarina** anchored at the bottom. Hitting notes on the Ocarina directly inserts notes into the partiture (both Live Step Input and Real-Time Record), and hitting **Play** auto-scrolls the partiture horizontally with the playhead.
+3. **Mode 2 Song Select Screen**: Dedicated arcade song-select screen showcasing all 9+ Zelda partitures, custom/imported songs, Novice/Original assist, Metronome, Offset, and a prominent **PLAY STAGE** button.
+4. **Mode 2 Gameplay Stage Screen**: Taiko-Web-style layout with top festival HUD (Song Title, **Soul Gauge**, Score, Combo, Miss Streak, Fullscreen, Restart, Quit), upper-middle **Right-to-Left Note Highway**, illustrated **Hyrule Festival Stage** (`arcade-stage-banner.jpg`), and the **Interactive Ocarina** anchored at the bottom.
+5. **Mode 2 Results / Game Over Screen**: Celebratory Stage Clear screen (`results-victory-art.jpg`) with Soul Gauge, PIU Phoenix 2 Score (`1,000,000` & `1000` scale), Grade (`SSS+`–`F`), Plate, and Judgement Breakdown.
+
+### 4.2 Fullscreen & PWA Installability
+- **Fullscreen Button**: Available in the Title Screen and every mode's HUD (`document.documentElement.requestFullscreen()`).
+- **PWA ("Add to Home Screen")**: `manifest.webmanifest`, `sw.js`, Apple touch icons, and an in-app **Install App** button (`beforeinstallprompt` + iOS fallback instructions).
+
+### Stage 2 Milestones
+- **Milestone 6 (`feature/m6-game-screens-pwa-fullscreen`)**: Dedicated Game Screens, Title Screen with Gemini Nano Banana art, Fullscreen toggle, PWA manifest & service worker.
+- **Milestone 7 (`feature/m7-composer-ocarina-input-samples`)**: Composer Sample Song Dropdown, Ocarina-first note insertion into partiture, horizontal auto-scroll on play/record, bottom-anchored Ocarina layout.
+- **Milestone 8 (`feature/m8-arcade-taiko-stage-redesign`)**: Taiko-Web-inspired Song Select, Gameplay Stage (top highway + festival stage + bottom Ocarina + Soul Gauge), and Results/Game Over screens.
+- **Milestone 9 (`feature/m9-stage2-e2e-deploy`)**: Stage 2 Playwright E2E verification, PR merge to `main`, GitHub Pages deployment, and live online verification.

@@ -1,12 +1,14 @@
 import './styles/main.css';
-import { HoleId, HOLE_MAP, KeyMapping, AppSettings, CustomSvgSkin, Playlist } from './types';
+import { HoleId, HOLE_MAP, KeyMapping, AppSettings, CustomSvgSkin, Playlist, ArcadeHighScore } from './types';
 import {
   loadCustomSkins,
+  loadHighScores,
   loadKeyMapping,
   loadPlaylists,
   loadSelectedSkinId,
   loadSettings,
   saveCustomSkins,
+  saveHighScore,
   saveKeyMapping,
   savePlaylists,
   saveSelectedSkinId,
@@ -21,6 +23,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { SkinGalleryModal } from './components/SkinGalleryModal';
 import { OCARINA_SKINS } from './data/ocarinaSkins';
 import { FreePlayComposer } from './modes/freePlay/FreePlayComposer';
+import { ArcadeMode } from './modes/arcade/ArcadeMode';
 
 class OcarinaApp {
   private root: HTMLElement;
@@ -29,6 +32,7 @@ class OcarinaApp {
   private selectedSkinId: string;
   private customSkins: CustomSvgSkin[];
   private playlists: Playlist[];
+  private highScores: Record<string, ArcadeHighScore>;
   private activeMode: 'free' | 'arcade' = 'free';
 
   private ocarinaCtrl!: OcarinaSvgController;
@@ -36,6 +40,7 @@ class OcarinaApp {
   private settingsModal!: SettingsModal;
   private skinGalleryModal!: SkinGalleryModal;
   private freePlayComposer: FreePlayComposer | null = null;
+  private arcadeMode: ArcadeMode | null = null;
 
   private heldHoles: HoleId[] = [];
   private isBlowKeyHeld = false;
@@ -48,6 +53,7 @@ class OcarinaApp {
     this.selectedSkinId = loadSelectedSkinId();
     this.customSkins = loadCustomSkins();
     this.playlists = loadPlaylists();
+    this.highScores = loadHighScores();
 
     this.applyAudioAndHaptics();
     this.renderShell();
@@ -123,6 +129,8 @@ class OcarinaApp {
     const panel = this.root.querySelector<HTMLElement>('#mode-panel');
     if (!panel) return;
     if (this.activeMode === 'free') {
+      this.arcadeMode?.destroy();
+      this.arcadeMode = null;
       this.freePlayComposer?.destroy();
       this.freePlayComposer = new FreePlayComposer(panel, this.playlists, {
         onPlaylistsChange: (updated) => {
@@ -135,12 +143,19 @@ class OcarinaApp {
     } else {
       this.freePlayComposer?.destroy();
       this.freePlayComposer = null;
-      panel.innerHTML = `
-        <div>
-          <h2 style="margin:0;font-family:var(--font-display);color:var(--taiko-orange);">Mode 2: Arcade Rhythm</h2>
-          <p class="muted-text">Arcade highway &amp; Pump It Up Phoenix 2 scoring arriving in Milestone 4.</p>
-        </div>
-      `;
+      this.arcadeMode?.destroy();
+      this.arcadeMode = new ArcadeMode(panel, this.settings, this.playlists, this.highScores, {
+        onSettingsChange: (s) => {
+          this.settings = s;
+          saveSettings(s);
+          this.applyAudioAndHaptics();
+        },
+        onSaveScore: (entry) => {
+          saveHighScore(entry);
+          this.highScores = loadHighScores();
+        },
+        onToast: (msg) => this.showToast(msg),
+      });
     }
   }
 
@@ -284,6 +299,10 @@ class OcarinaApp {
     }
     this.ocarinaCtrl.setHoleActive(holeId, true);
     haptics.pressHole();
+
+    if (this.activeMode === 'arcade' && this.arcadeMode?.onPlayerInput(holeId)) {
+      return;
+    }
 
     if (!this.settings.breathMode || this.isBlowKeyHeld) {
       ocarinaSynth.startNote(HOLE_MAP[holeId].frequency);

@@ -33,29 +33,32 @@ test.describe('Not The Ocarina Playing Simulator — Arcade Overhaul E2E', () =>
     }));
     expect(overflowMenu).toEqual({ x: false, y: false });
 
-    // 3. Enter Mode 1 (Composer Screen)
+    // 3. Enter Mode 1 (Composer Screen - Minimalist 50/50 + Floating Side Docks)
     await page.click('#launch-mode-composer');
     await expect(page.locator('.ocarina-svg')).toBeVisible();
-    await expect(page.locator('.hole-key-badge').first()).toBeVisible();
+    await expect(page.locator('#btn-skin-gallery')).toHaveCount(0);
+    await expect(page.locator('#composer-dock-left')).toBeVisible();
+    await expect(page.locator('#composer-dock-right')).toBeVisible();
 
-    // Load a funny sample from dropdown
+    const overflowComposer = await page.evaluate(() => ({
+      x: document.documentElement.scrollWidth > window.innerWidth,
+      y: document.documentElement.scrollHeight > window.innerHeight,
+    }));
+    expect(overflowComposer).toEqual({ x: false, y: false });
+
+    // Load a funny sample from floating left dock
     await page.selectOption('#comp-sample-select', 'sample:mild-drizzle-forecast');
     await expect(page.locator('#comp-track-title')).toHaveValue('Windmill Weather Forecast');
     const sampleNotesCount = await page.locator('.partiture-note').count();
     expect(sampleNotesCount).toBeGreaterThan(5);
 
-    // Ocarina-first polyphonic input: pressing Ocarina keys adds notes directly to the partiture!
+    // Polyphonic & Long-Press Input: hold two keys simultaneously!
     await page.keyboard.down('KeyJ');
-    await expect(page.locator('#ocarina-live-note')).toContainText('D5');
+    await page.keyboard.down('KeyL');
+    await page.waitForTimeout(350);
     await page.keyboard.up('KeyJ');
-    await expect(page.locator('.partiture-note')).toHaveCount(sampleNotesCount + 1);
-
-    // Skin Gallery
-    await page.click('#btn-skin-gallery');
-    await expect(page.locator('#skin-gallery-dialog')).toBeVisible();
-    await page.click('[data-select-skin="midnight-carnival"]');
-    await expect(page.locator('#ocarina-skin-pill')).toHaveText('Midnight Carnival');
-    await page.click('#skin-done-btn');
+    await page.keyboard.up('KeyL');
+    await expect(page.locator('.partiture-note')).toHaveCount(sampleNotesCount + 2);
 
     // 4. Return to Mode Select & Enter Mode 2 (Arcade)
     await page.click('#btn-back-title');

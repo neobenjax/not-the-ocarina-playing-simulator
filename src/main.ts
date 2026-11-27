@@ -192,41 +192,21 @@ class OcarinaApp {
   }
 
   private renderComposerScreen(): void {
-    const isFs = Boolean(document.fullscreenElement);
-
     this.root.innerHTML = `
-      <div class="game-screen-shell">
-        <header class="game-mode-hud">
-          <div class="hud-left">
-            <button type="button" class="btn btn-secondary" id="btn-back-title">← Menu</button>
-            <h1 class="hud-mode-title">🎵 Free Play &amp; Composer</h1>
-          </div>
-          <div class="hud-actions">
-            <button type="button" class="btn btn-secondary" id="btn-skin-gallery">🎨 Skins</button>
-            <button type="button" class="btn btn-secondary" id="btn-key-map">⌨️ Keys</button>
-            <button type="button" class="btn btn-secondary ${this.settings.bgmEnabled ? 'is-on' : ''}" id="btn-toggle-bgm">
-              🎶 BGM ${this.settings.bgmEnabled ? 'On' : 'Off'}
-            </button>
-            <button type="button" class="btn btn-secondary" id="btn-settings">⚙️ Settings</button>
-            <button type="button" class="btn btn-secondary" id="btn-fullscreen" title="Toggle Fullscreen">
-              ${isFs ? '🗗' : '⛶'}
-            </button>
-          </div>
-        </header>
-
-        <main class="game-screen-body">
-          <section id="mode-panel" class="panel-card mode-top-workspace"></section>
-          <section id="ocarina-stage" class="panel-card ocarina-stage ocarina-bottom-dock"></section>
-        </main>
+      <div class="composer-shell-5050">
+        <section id="mode-panel" class="composer-top-half"></section>
+        <section id="ocarina-stage" class="ocarina-stage arcade-ingame-bottom composer-bottom-half">
+          <img src="/not-the-ocarina-playing-simulator/assets/arcade-stage-bg.jpg" alt="" class="arcade-stage-bg-img" />
+          <div id="composer-dock-left" class="composer-float-dock is-left"></div>
+          <div id="ocarina-stage-mount" class="arcade-ocarina-mount"></div>
+          <div id="composer-dock-right" class="composer-float-dock is-right"></div>
+        </section>
       </div>
       <div id="toast-banner" class="toast-banner" role="status" aria-live="polite"></div>
     `;
 
-    this.root.querySelector('#btn-back-title')?.addEventListener('click', () => this.navigateTo('title'));
-    this.bindCommonUtilityButtons();
-
-    const stageEl = this.root.querySelector<HTMLElement>('#ocarina-stage')!;
-    this.ocarinaCtrl = new OcarinaSvgController(stageEl, this.keyMapping, {
+    const mountEl = this.root.querySelector<HTMLElement>('#ocarina-stage-mount')!;
+    this.ocarinaCtrl = new OcarinaSvgController(mountEl, this.keyMapping, {
       onHoleDown: (id) => this.handleHoleDown(id),
       onHoleUp: (id) => this.handleHoleUp(id),
       onBlowDown: () => this.handleBlowDown(),
@@ -236,13 +216,16 @@ class OcarinaApp {
     this.applySelectedSkin();
 
     const panel = this.root.querySelector<HTMLElement>('#mode-panel')!;
-    this.freePlayComposer = new FreePlayComposer(panel, this.playlists, {
+    const dockLeft = this.root.querySelector<HTMLElement>('#composer-dock-left')!;
+    const dockRight = this.root.querySelector<HTMLElement>('#composer-dock-right')!;
+    this.freePlayComposer = new FreePlayComposer(panel, dockLeft, dockRight, this.playlists, {
       onPlaylistsChange: (updated) => {
         this.playlists = updated;
         savePlaylists(updated);
       },
       onToast: (msg) => this.showToast(msg),
       onHighlightHole: (holeId, active) => this.ocarinaCtrl?.setHoleActive(holeId, active),
+      onBackToMenu: () => this.navigateTo('title'),
     });
   }
 

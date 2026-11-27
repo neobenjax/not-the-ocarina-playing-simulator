@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
+    "overlayscrollbars": "^2.17.1",
     "web-haptics": "^0.0.6"
   },
   "devDependencies": {

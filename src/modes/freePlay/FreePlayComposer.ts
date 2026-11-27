@@ -1,3 +1,5 @@
+import 'overlayscrollbars/overlayscrollbars.css';
+import { OverlayScrollbars } from 'overlayscrollbars';
 import { HOLE_MAP, HoleId, PartitureNote, PartitureTrack, Playlist } from '../../types';
 import { SAMPLE_SONGS } from '../../data/sampleSongs';
 import { haptics } from '../../haptics/hapticEngine';
@@ -9,8 +11,15 @@ import { detectSecretMotif, parsePartitureText, serializePartitureText } from '.
 const LANES_TOP_TO_BOTTOM: HoleId[] = ['hole-up', 'hole-left', 'hole-right', 'hole-down', 'hole-a'];
 const PX_PER_BEAT = 64;
 
+interface ActiveLiveNote {
+  note: PartitureNote;
+  startPerf: number;
+}
+
 export class FreePlayComposer {
   private container: HTMLElement;
+  private dockLeft: HTMLElement;
+  private dockRight: HTMLElement;
   private playlists: Playlist[];
   private activePlaylistId: string;
   private currentTrack: PartitureTrack;
@@ -20,9 +29,15 @@ export class FreePlayComposer {
   private isPlaying = false;
   private useMetronome = true;
   private ocarinaToPartiture = true;
+  private autoBpm = true;
 
   private recordStartMs = 0;
-  private activeRecordingNote: { holeId: HoleId; startMs: number } | null = null;
+  private activeLiveNotes = new Map<HoleId, ActiveLiveNote>();
+  private liveHoldRaf: number | null = null;
+  private lastStepGroupStartPerf = 0;
+  private lastStepGroupStartBeat = 0;
+  private lastOnsetPerf = 0;
+  private recentOnsetIntervals: number[] = [];
   private recentMotifHoles: HoleId[] = [];
 
   private playTimer: number | null = null;
@@ -30,21 +45,28 @@ export class FreePlayComposer {
   private playheadBeat = 0;
   private lastMetronomeBeat = -1;
   private playedNoteIds = new Set<string>();
+  private osInstance: ReturnType<typeof OverlayScrollbars> | null = null;
 
   private onPlaylistsChange: (playlists: Playlist[]) => void;
   private onToast: (msg: string) => void;
   private onHighlightHole: (holeId: HoleId, active: boolean) => void;
+  private onBackToMenu: () => void;
 
   constructor(
     container: HTMLElement,
+    dockLeft: HTMLElement,
+    dockRight: HTMLElement,
     playlists: Playlist[],
     callbacks: {
       onPlaylistsChange: (playlists: Playlist[]) => void;
       onToast: (msg: string) => void;
       onHighlightHole: (holeId: HoleId, active: boolean) => void;
+      onBackToMenu: () => void;
     }
   ) {
     this.container = container;
+    this.dockLeft = dockLeft;
+    this.dockRight = dockRight;
     this.playlists = playlists;
     this.activePlaylistId = playlists[0]?.id || '';
     const firstTrack = playlists[0]?.tracks[0];
@@ -54,15 +76,28 @@ export class FreePlayComposer {
     this.onPlaylistsChange = callbacks.onPlaylistsChange;
     this.onToast = callbacks.onToast;
     this.onHighlightHole = callbacks.onHighlightHole;
+    this.onBackToMenu = callbacks.onBackToMenu;
     this.render();
   }
 
   destroy(): void {
     this.stopPlayback();
+    this.stopLiveHoldLoop();
     this.isRecording = false;
+    this.activeLiveNotes.clear();
+    this.osInstance?.destroy();
+    this.osInstance = null;
+  }
+
+  private getScrollViewport(): HTMLElement | null {
+    if (this.osInstance) {
+      return this.osInstance.elements().viewport;
+    }
+    return this.container.querySelector<HTMLElement>('#partiture-scroll');
   }
 
   onLiveNoteStart(holeId: HoleId): void {
+    const now = performance.now();
     this.recentMotifHoles.push(holeId);
     if (this.recentMotifHoles.length > 12) this.recentMotifHoles.shift();
     const detected = detectSecretMotif(this.recentMotifHoles);
@@ -73,72 +108,150 @@ export class FreePlayComposer {
       this.onToast(`✨ Melody Discovered: ${detected}!`);
     }
 
-    if (this.isRecording) {
-      if (this.activeRecordingNote) {
-        this.finalizeRecordingNote(performance.now());
+    // Auto-calculate BPM from inter-onset intervals when enabled
+    if (this.autoBpm && (this.isRecording || this.ocarinaToPartiture) && !this.isPlaying) {
+      if (this.lastOnsetPerf > 0) {
+        const dtSec = (now - this.lastOnsetPerf) / 1000;
+        if (dtSec >= 0.14 && dtSec <= 2.2) {
+          this.recentOnsetIntervals.push(dtSec);
+          if (this.recentOnsetIntervals.length > 8) this.recentOnsetIntervals.shift();
+          if (this.recentOnsetIntervals.length >= 3) {
+            const sorted = [...this.recentOnsetIntervals].sort((a, b) => a - b);
+            const median = sorted[Math.floor(sorted.length / 2)];
+            const calcBpm = Math.max(40, Math.min(220, Math.round(60 / median)));
+            this.currentTrack.bpm = calcBpm;
+            this.syncBpmDisplay();
+          }
+          this.lastOnsetPerf = now;
+        } else if (dtSec > 2.2) {
+          this.recentOnsetIntervals = [];
+          this.lastOnsetPerf = now;
+        }
+      } else {
+        this.lastOnsetPerf = now;
       }
-      this.activeRecordingNote = { holeId, startMs: performance.now() };
+    }
+
+    if (!this.isRecording && (!this.ocarinaToPartiture || this.isPlaying)) {
       return;
     }
 
-    // Ocarina-first Live Step Input: hitting notes on the Ocarina inserts them into the partiture!
-    if (this.ocarinaToPartiture && !this.isPlaying) {
-      const stepDur = Math.max(0.25, this.snapBeats || 0.5);
-      const nextBeat = this.currentTrack.notes.reduce(
-        (max, n) => Math.max(max, n.startBeat + n.durationBeats),
-        0
-      );
-      const newNote: PartitureNote = {
-        id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        holeId,
-        startBeat: this.snap(nextBeat),
-        durationBeats: stepDur,
-      };
-      this.currentTrack.notes.push(newNote);
-      this.selectedNoteId = newNote.id;
-      this.currentTrack.updatedAt = Date.now();
-      this.renderTimelineOnly();
-      this.updateDeleteButtonState();
-      this.scrollToBeat(newNote.startBeat + newNote.durationBeats);
+    // Avoid duplicate entry if same hole already held
+    if (this.activeLiveNotes.has(holeId)) return;
+
+    const secPerBeat = 60 / Math.max(40, this.currentTrack.bpm);
+    let startBeat = 0;
+
+    if (this.isRecording) {
+      const rawStartBeat = Math.max(0, (now - this.recordStartMs) / 1000 / secPerBeat);
+      startBeat = this.snap(rawStartBeat);
+    } else {
+      // Polyphonic step input: simultaneous or near-simultaneous (<140ms) notes share startBeat!
+      const isChord =
+        this.activeLiveNotes.size > 0 || now - this.lastStepGroupStartPerf < 140;
+      if (isChord) {
+        startBeat = this.lastStepGroupStartBeat;
+      } else {
+        const nextBeat = this.currentTrack.notes.reduce(
+          (max, n) => Math.max(max, n.startBeat + n.durationBeats),
+          0
+        );
+        startBeat = this.snap(nextBeat);
+        this.lastStepGroupStartBeat = startBeat;
+        this.lastStepGroupStartPerf = now;
+      }
     }
-  }
 
-  onLiveNoteEnd(holeId: HoleId): void {
-    if (this.isRecording && this.activeRecordingNote?.holeId === holeId) {
-      this.finalizeRecordingNote(performance.now());
-    }
-  }
-
-  private finalizeRecordingNote(endMs: number): void {
-    if (!this.activeRecordingNote) return;
-    const { holeId, startMs } = this.activeRecordingNote;
-    this.activeRecordingNote = null;
-
-    const secPerBeat = 60 / this.currentTrack.bpm;
-    const rawStartBeat = Math.max(0, (startMs - this.recordStartMs) / 1000 / secPerBeat);
-    const rawDurBeats = Math.max(0.25, (endMs - startMs) / 1000 / secPerBeat);
-
-    const startBeat = this.snap(rawStartBeat);
-    const durationBeats = Math.max(0.25, this.snap(rawDurBeats));
-
-    this.currentTrack.notes.push({
+    const newNote: PartitureNote = {
       id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       holeId,
       startBeat,
-      durationBeats,
-    });
+      durationBeats: Math.max(0.25, this.snapBeats || 0.25),
+    };
+    this.currentTrack.notes.push(newNote);
+    this.selectedNoteId = newNote.id;
     this.currentTrack.updatedAt = Date.now();
+    this.activeLiveNotes.set(holeId, { note: newNote, startPerf: now });
+
     this.renderTimelineOnly();
-    this.scrollToBeat(startBeat + durationBeats);
+    this.updateDeleteButtonState();
+    this.ensureBeatVisibleSmooth(newNote.startBeat + newNote.durationBeats);
+    this.startLiveHoldLoop();
   }
 
-  private scrollToBeat(beat: number): void {
-    const scrollEl = this.container.querySelector<HTMLElement>('#partiture-scroll');
-    if (!scrollEl) return;
+  onLiveNoteEnd(holeId: HoleId): void {
+    const active = this.activeLiveNotes.get(holeId);
+    if (!active) return;
+
+    const secPerBeat = 60 / Math.max(40, this.currentTrack.bpm);
+    const heldBeats = (performance.now() - active.startPerf) / 1000 / secPerBeat;
+    const minDur = Math.max(0.25, this.snapBeats || 0.25);
+    active.note.durationBeats = Math.max(minDur, this.snap(heldBeats));
+    this.activeLiveNotes.delete(holeId);
+    this.currentTrack.updatedAt = Date.now();
+
+    if (this.activeLiveNotes.size === 0) {
+      this.stopLiveHoldLoop();
+    }
+    this.renderTimelineOnly();
+    this.ensureBeatVisibleSmooth(active.note.startBeat + active.note.durationBeats);
+  }
+
+  private startLiveHoldLoop(): void {
+    if (this.liveHoldRaf !== null) return;
+    const tick = () => {
+      if (this.activeLiveNotes.size === 0) {
+        this.liveHoldRaf = null;
+        return;
+      }
+      const secPerBeat = 60 / Math.max(40, this.currentTrack.bpm);
+      const now = performance.now();
+      for (const [, entry] of this.activeLiveNotes) {
+        const heldBeats = Math.max(0.25, (now - entry.startPerf) / 1000 / secPerBeat);
+        entry.note.durationBeats = heldBeats;
+        const noteEl = this.container.querySelector<HTMLElement>(
+          `.partiture-note[data-note-id="${entry.note.id}"]`
+        );
+        if (noteEl) {
+          noteEl.style.width = `${Math.max(18, heldBeats * PX_PER_BEAT)}px`;
+        }
+      }
+      this.liveHoldRaf = requestAnimationFrame(tick);
+    };
+    this.liveHoldRaf = requestAnimationFrame(tick);
+  }
+
+  private stopLiveHoldLoop(): void {
+    if (this.liveHoldRaf !== null) {
+      cancelAnimationFrame(this.liveHoldRaf);
+      this.liveHoldRaf = null;
+    }
+  }
+
+  private syncBpmDisplay(): void {
+    const bpmInput = this.dockLeft.querySelector<HTMLInputElement>('#comp-bpm');
+    if (bpmInput) bpmInput.value = String(this.currentTrack.bpm);
+    const hudBpm = this.container.querySelector<HTMLElement>('#comp-hud-bpm');
+    if (hudBpm) hudBpm.textContent = `${this.currentTrack.bpm} BPM`;
+  }
+
+  /**
+   * Smoothly scrolls horizontally only when the target beat approaches the right edge
+   * or falls behind the left edge, eliminating back-and-forth bouncing.
+   */
+  private ensureBeatVisibleSmooth(beat: number, instant = false): void {
+    const viewport = this.getScrollViewport();
+    if (!viewport) return;
     const targetX = 84 + beat * PX_PER_BEAT;
-    const viewW = scrollEl.clientWidth;
-    if (targetX > scrollEl.scrollLeft + viewW * 0.72 || targetX < scrollEl.scrollLeft + 84) {
-      scrollEl.scrollLeft = Math.max(0, targetX - viewW * 0.45);
+    const viewW = viewport.clientWidth;
+    const currentLeft = viewport.scrollLeft;
+
+    if (targetX > currentLeft + viewW - 72) {
+      const nextLeft = Math.max(0, targetX - viewW + 120);
+      viewport.scrollTo({ left: nextLeft, behavior: instant ? 'auto' : 'smooth' });
+    } else if (targetX < currentLeft + 84 && currentLeft > 0) {
+      const nextLeft = Math.max(0, targetX - 110);
+      viewport.scrollTo({ left: nextLeft, behavior: instant ? 'auto' : 'smooth' });
     }
   }
 
@@ -158,102 +271,122 @@ export class FreePlayComposer {
   render(): void {
     const activePl = this.playlists.find((p) => p.id === this.activePlaylistId) || this.playlists[0];
 
+    // Minimalist Top 50%: Only ← Menu button, clean track readout, and 5-track partiture
     this.container.innerHTML = `
-      <div class="composer-shell">
-        <div class="composer-top-bar">
-          <div class="composer-title-group">
-            <select id="comp-sample-select" class="text-input comp-sample-select" aria-label="Load Sample Partiture">
-              <option value="">🎼 Load Sample...</option>
-              ${SAMPLE_SONGS.map(
-                (s) => `<option value="sample:${s.id}" ${this.currentTrack.id === s.id ? 'selected' : ''}>🎵 ${this.escapeHtml(s.title)} (${s.bpm} BPM)</option>`
-              ).join('')}
-            </select>
-
-            <input type="text" id="comp-track-title" class="text-input comp-title-input" value="${this.escapeHtml(this.currentTrack.title)}" aria-label="Track Title" />
-
-            <label class="bpm-pill">
-              <span>BPM</span>
-              <input type="number" id="comp-bpm" min="40" max="220" value="${this.currentTrack.bpm}" />
-            </label>
-            <label class="bpm-pill">
-              <span>Snap</span>
-              <select id="comp-snap">
-                <option value="0.25" ${this.snapBeats === 0.25 ? 'selected' : ''}>1/4</option>
-                <option value="0.5" ${this.snapBeats === 0.5 ? 'selected' : ''}>1/2</option>
-                <option value="1" ${this.snapBeats === 1 ? 'selected' : ''}>1 Beat</option>
-                <option value="0" ${this.snapBeats === 0 ? 'selected' : ''}>Free</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="composer-transport">
-            <button type="button" class="btn ${this.ocarinaToPartiture ? 'is-on' : 'btn-secondary'}" id="btn-comp-step-input" title="Add notes to partiture as you play the Ocarina">
-              ✍️ Ocarina Input ${this.ocarinaToPartiture ? 'On' : 'Off'}
-            </button>
-            <button type="button" class="btn ${this.isRecording ? 'btn-danger is-recording' : 'btn-outline'}" id="btn-comp-rec">
-              ${this.isRecording ? '⏹ Stop Rec' : '● Record'}
-            </button>
-            <button type="button" class="btn btn-primary" id="btn-comp-play">
-              ${this.isPlaying ? '⏸ Pause' : '▶ Play'}
-            </button>
-            <button type="button" class="btn btn-secondary" id="btn-comp-stop">⏹ Stop</button>
-            <button type="button" class="btn btn-secondary ${this.useMetronome ? 'is-on' : ''}" id="btn-comp-metro">🥁 Metro</button>
-            <button type="button" class="btn btn-secondary" id="btn-comp-del-note" ${this.selectedNoteId ? '' : 'disabled'}>🗑️ Del</button>
-            <button type="button" class="btn btn-secondary" id="btn-comp-clear">🧹 Clear</button>
+      <div class="composer-top-clean">
+        <div class="composer-minimal-bar">
+          <button type="button" class="btn btn-secondary" id="btn-back-title">← Menu</button>
+          <div class="composer-minimal-info">
+            <strong id="comp-hud-title">${this.escapeHtml(this.currentTrack.title)}</strong>
+            <span class="hud-bpm-pill" id="comp-hud-bpm">${this.currentTrack.bpm} BPM</span>
           </div>
         </div>
-
         <div class="partiture-timeline-scroll" id="partiture-scroll">
           <div class="partiture-timeline" id="partiture-timeline"></div>
         </div>
-
-        <div class="composer-bottom-bar">
-          <div class="playlist-controls">
-            <select id="comp-playlist-select" class="text-input" aria-label="Select Playlist">
-              ${this.playlists.map((pl) => `<option value="${pl.id}" ${pl.id === activePl?.id ? 'selected' : ''}>📁 ${this.escapeHtml(pl.name)} (${pl.tracks.length})</option>`).join('')}
-            </select>
-            <button type="button" class="btn btn-secondary" id="btn-pl-new">+ Playlist</button>
-            <button type="button" class="btn btn-secondary" id="btn-pl-rename">✏️ Rename</button>
-            <button type="button" class="btn btn-gold" id="btn-comp-save">💾 Save Track</button>
-          </div>
-
-          <div class="export-controls">
-            <button type="button" class="btn btn-primary" id="btn-export-mp3">🎧 Export MP3</button>
-            <button type="button" class="btn btn-outline" id="btn-export-txt">📄 Partiture .txt</button>
-            <label class="btn btn-secondary file-btn">
-              📥 Import .txt
-              <input type="file" id="input-import-txt" accept=".txt,text/plain" hidden />
-            </label>
-          </div>
-        </div>
-
-        ${
-          activePl && activePl.tracks.length > 0
-            ? `<div class="playlist-tracks-strip">
-                 ${activePl.tracks
-                   .map(
-                     (t) => `
-                   <div class="track-chip ${t.id === this.currentTrack.id ? 'is-active' : ''}">
-                     <button type="button" class="track-chip-load" data-load-track="${t.id}">
-                       🎵 ${this.escapeHtml(t.title)} <span class="muted-text">(${t.bpm} BPM)</span>
-                     </button>
-                     <button type="button" class="track-chip-del" data-del-track="${t.id}" aria-label="Delete ${this.escapeHtml(t.title)}">✕</button>
-                   </div>`
-                   )
-                   .join('')}
-               </div>`
-            : `<p class="muted-text" style="margin:0;">Play the Ocarina below or pick a sample above to compose!</p>`
-        }
       </div>
     `;
 
+    // Left Floating Dock inside Ocarina stage: Song / BPM / Playlist / Export
+    this.dockLeft.innerHTML = `
+      <div class="dock-card">
+        <select id="comp-sample-select" class="text-input dock-input" aria-label="Load Sample Partiture">
+          <option value="">🎼 Sample...</option>
+          ${SAMPLE_SONGS.map(
+            (s) => `<option value="sample:${s.id}" ${this.currentTrack.id === s.id ? 'selected' : ''}>${this.escapeHtml(s.title)}</option>`
+          ).join('')}
+        </select>
+
+        <input type="text" id="comp-track-title" class="text-input dock-input" value="${this.escapeHtml(this.currentTrack.title)}" aria-label="Track Title" />
+
+        <div class="dock-row">
+          <label class="bpm-pill dock-pill">
+            <span>BPM</span>
+            <input type="number" id="comp-bpm" min="40" max="220" value="${this.currentTrack.bpm}" />
+          </label>
+          <button type="button" class="btn ${this.autoBpm ? 'is-on' : 'btn-secondary'} dock-btn" id="btn-comp-auto-bpm" title="Auto-calculate BPM from Ocarina rhythm">
+            ⚡ Auto
+          </button>
+          <label class="bpm-pill dock-pill">
+            <span>Snap</span>
+            <select id="comp-snap">
+              <option value="0.25" ${this.snapBeats === 0.25 ? 'selected' : ''}>1/4</option>
+              <option value="0.5" ${this.snapBeats === 0.5 ? 'selected' : ''}>1/2</option>
+              <option value="1" ${this.snapBeats === 1 ? 'selected' : ''}>1</option>
+              <option value="0" ${this.snapBeats === 0 ? 'selected' : ''}>Free</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="dock-row">
+          <select id="comp-playlist-select" class="text-input dock-input" aria-label="Select Playlist">
+            ${this.playlists.map((pl) => `<option value="${pl.id}" ${pl.id === activePl?.id ? 'selected' : ''}>📁 ${this.escapeHtml(pl.name)} (${pl.tracks.length})</option>`).join('')}
+          </select>
+          <button type="button" class="btn btn-secondary dock-btn" id="btn-pl-new" title="New Playlist">+</button>
+          <button type="button" class="btn btn-gold dock-btn" id="btn-comp-save" title="Save Track">💾 Save</button>
+        </div>
+
+        <div class="dock-row">
+          <button type="button" class="btn btn-primary dock-btn" id="btn-export-mp3">🎧 MP3</button>
+          <button type="button" class="btn btn-outline dock-btn" id="btn-export-txt">📄 .txt</button>
+          <label class="btn btn-secondary dock-btn file-btn">
+            📥 Load
+            <input type="file" id="input-import-txt" accept=".txt,text/plain" hidden />
+          </label>
+        </div>
+      </div>
+    `;
+
+    // Right Floating Dock inside Ocarina stage: Transport & Note Editing
+    this.dockRight.innerHTML = `
+      <div class="dock-card">
+        <button type="button" class="btn ${this.ocarinaToPartiture ? 'is-on' : 'btn-secondary'} dock-btn" id="btn-comp-step-input" title="Add notes to partiture as you play">
+          ✍️ Input ${this.ocarinaToPartiture ? 'On' : 'Off'}
+        </button>
+        <button type="button" class="btn ${this.isRecording ? 'btn-danger is-recording' : 'btn-outline'} dock-btn" id="btn-comp-rec">
+          ${this.isRecording ? '⏹ Stop Rec' : '● Record'}
+        </button>
+        <div class="dock-row">
+          <button type="button" class="btn btn-primary dock-btn" id="btn-comp-play">
+            ${this.isPlaying ? '⏸ Pause' : '▶ Play'}
+          </button>
+          <button type="button" class="btn btn-secondary dock-btn" id="btn-comp-stop">⏹ Stop</button>
+        </div>
+        <div class="dock-row">
+          <button type="button" class="btn btn-secondary ${this.useMetronome ? 'is-on' : ''} dock-btn" id="btn-comp-metro">🥁 Metro</button>
+          <button type="button" class="btn btn-secondary dock-btn" id="btn-comp-del-note" ${this.selectedNoteId ? '' : 'disabled'}>🗑️ Del</button>
+          <button type="button" class="btn btn-secondary dock-btn" id="btn-comp-clear">🧹 Clear</button>
+        </div>
+      </div>
+    `;
+
+    this.initScrollbar();
     this.renderTimelineOnly();
     this.bindEvents();
+  }
+
+  private initScrollbar(): void {
+    this.osInstance?.destroy();
+    this.osInstance = null;
+    const scrollEl = this.container.querySelector<HTMLElement>('#partiture-scroll');
+    if (scrollEl) {
+      this.osInstance = OverlayScrollbars(scrollEl, {
+        overflow: { x: 'scroll', y: 'hidden' },
+        scrollbars: {
+          theme: 'os-theme-light',
+          autoHide: 'never',
+          clickScroll: true,
+        },
+      });
+    }
   }
 
   private renderTimelineOnly(): void {
     const timeline = this.container.querySelector<HTMLElement>('#partiture-timeline');
     if (!timeline) return;
+
+    const viewport = this.getScrollViewport();
+    const prevScrollLeft = viewport ? viewport.scrollLeft : 0;
 
     const totalBeats = this.getTotalBeats();
     const widthPx = totalBeats * PX_PER_BEAT;
@@ -301,6 +434,10 @@ export class FreePlayComposer {
         <div class="partiture-playhead" id="partiture-playhead" style="left:${84 + this.playheadBeat * PX_PER_BEAT}px"></div>
       </div>
     `;
+
+    if (viewport) {
+      viewport.scrollLeft = prevScrollLeft;
+    }
 
     this.bindTimelineInteractions();
   }
@@ -380,12 +517,16 @@ export class FreePlayComposer {
   }
 
   private updateDeleteButtonState(): void {
-    const delBtn = this.container.querySelector<HTMLButtonElement>('#btn-comp-del-note');
+    const delBtn = this.dockRight.querySelector<HTMLButtonElement>('#btn-comp-del-note');
     if (delBtn) delBtn.disabled = !this.selectedNoteId;
   }
 
   private bindEvents(): void {
-    this.container.querySelector<HTMLSelectElement>('#comp-sample-select')?.addEventListener('change', (e) => {
+    this.container.querySelector('#btn-back-title')?.addEventListener('click', () => {
+      this.onBackToMenu();
+    });
+
+    this.dockLeft.querySelector<HTMLSelectElement>('#comp-sample-select')?.addEventListener('change', (e) => {
       const val = (e.target as HTMLSelectElement).value;
       if (!val.startsWith('sample:')) return;
       const songId = val.slice(7);
@@ -396,53 +537,69 @@ export class FreePlayComposer {
       this.stopPlayback();
       this.currentTrack = structuredClone(sample);
       this.selectedNoteId = null;
+      this.recentOnsetIntervals = [];
+      this.lastOnsetPerf = 0;
       this.onToast(`🎼 Loaded sample: ${sample.title}`);
       this.render();
     });
 
-    this.container.querySelector<HTMLInputElement>('#comp-track-title')?.addEventListener('input', (e) => {
+    this.dockLeft.querySelector<HTMLInputElement>('#comp-track-title')?.addEventListener('input', (e) => {
       this.currentTrack.title = (e.target as HTMLInputElement).value;
+      const hudTitle = this.container.querySelector('#comp-hud-title');
+      if (hudTitle) hudTitle.textContent = this.currentTrack.title;
     });
 
-    this.container.querySelector<HTMLInputElement>('#comp-bpm')?.addEventListener('change', (e) => {
+    this.dockLeft.querySelector<HTMLInputElement>('#comp-bpm')?.addEventListener('change', (e) => {
       const val = Math.max(40, Math.min(220, parseInt((e.target as HTMLInputElement).value, 10) || 100));
       this.currentTrack.bpm = val;
-      (e.target as HTMLInputElement).value = String(val);
+      this.autoBpm = false;
+      this.dockLeft.querySelector('#btn-comp-auto-bpm')?.classList.remove('is-on');
+      this.syncBpmDisplay();
     });
 
-    this.container.querySelector<HTMLSelectElement>('#comp-snap')?.addEventListener('change', (e) => {
+    this.dockLeft.querySelector('#btn-comp-auto-bpm')?.addEventListener('click', (e) => {
+      this.autoBpm = !this.autoBpm;
+      this.recentOnsetIntervals = [];
+      this.lastOnsetPerf = 0;
+      playUiClick();
+      haptics.tapButton();
+      (e.currentTarget as HTMLButtonElement).classList.toggle('is-on', this.autoBpm);
+    });
+
+    this.dockLeft.querySelector<HTMLSelectElement>('#comp-snap')?.addEventListener('change', (e) => {
       this.snapBeats = parseFloat((e.target as HTMLSelectElement).value);
       playUiClick();
       haptics.tapButton();
     });
 
-    this.container.querySelector('#btn-comp-step-input')?.addEventListener('click', (e) => {
+    this.dockRight.querySelector('#btn-comp-step-input')?.addEventListener('click', (e) => {
       this.ocarinaToPartiture = !this.ocarinaToPartiture;
       playUiClick();
       haptics.tapButton();
       const btn = e.currentTarget as HTMLButtonElement;
       btn.classList.toggle('is-on', this.ocarinaToPartiture);
-      btn.textContent = `✍️ Ocarina Input ${this.ocarinaToPartiture ? 'On' : 'Off'}`;
+      btn.textContent = `✍️ Input ${this.ocarinaToPartiture ? 'On' : 'Off'}`;
     });
 
-    this.container.querySelector('#btn-comp-rec')?.addEventListener('click', () => {
+    this.dockRight.querySelector('#btn-comp-rec')?.addEventListener('click', () => {
       playUiClick();
       haptics.tapButton();
       if (this.isRecording) {
         this.isRecording = false;
-        this.activeRecordingNote = null;
+        this.activeLiveNotes.clear();
+        this.stopLiveHoldLoop();
         this.stopPlayback();
         this.onToast('Recording stopped!');
       } else {
         this.stopPlayback();
         this.isRecording = true;
         this.recordStartMs = performance.now();
-        this.onToast('● Recording live! Play the Ocarina below.');
+        this.onToast('● Recording live! Play the Ocarina.');
       }
       this.render();
     });
 
-    this.container.querySelector('#btn-comp-play')?.addEventListener('click', () => {
+    this.dockRight.querySelector('#btn-comp-play')?.addEventListener('click', () => {
       playUiClick();
       haptics.tapButton();
       if (this.isPlaying) {
@@ -452,20 +609,20 @@ export class FreePlayComposer {
       }
     });
 
-    this.container.querySelector('#btn-comp-stop')?.addEventListener('click', () => {
+    this.dockRight.querySelector('#btn-comp-stop')?.addEventListener('click', () => {
       playUiClick();
       haptics.tapButton();
       this.stopPlayback();
     });
 
-    this.container.querySelector('#btn-comp-metro')?.addEventListener('click', (e) => {
+    this.dockRight.querySelector('#btn-comp-metro')?.addEventListener('click', (e) => {
       this.useMetronome = !this.useMetronome;
       playUiClick();
       haptics.tapButton();
       (e.currentTarget as HTMLButtonElement).classList.toggle('is-on', this.useMetronome);
     });
 
-    this.container.querySelector('#btn-comp-del-note')?.addEventListener('click', () => {
+    this.dockRight.querySelector('#btn-comp-del-note')?.addEventListener('click', () => {
       if (!this.selectedNoteId) return;
       playUiClick();
       haptics.tapButton();
@@ -475,24 +632,28 @@ export class FreePlayComposer {
       this.updateDeleteButtonState();
     });
 
-    this.container.querySelector('#btn-comp-clear')?.addEventListener('click', () => {
+    this.dockRight.querySelector('#btn-comp-clear')?.addEventListener('click', () => {
       playUiClick();
       haptics.tapButton();
       this.stopPlayback();
+      this.activeLiveNotes.clear();
+      this.stopLiveHoldLoop();
       this.currentTrack.notes = [];
       this.selectedNoteId = null;
+      this.recentOnsetIntervals = [];
+      this.lastOnsetPerf = 0;
       this.renderTimelineOnly();
       this.updateDeleteButtonState();
       this.onToast('Partiture cleared.');
     });
 
-    this.container.querySelector('#comp-playlist-select')?.addEventListener('change', (e) => {
+    this.dockLeft.querySelector('#comp-playlist-select')?.addEventListener('change', (e) => {
       this.activePlaylistId = (e.target as HTMLSelectElement).value;
       playUiClick();
       this.render();
     });
 
-    this.container.querySelector('#btn-pl-new')?.addEventListener('click', () => {
+    this.dockLeft.querySelector('#btn-pl-new')?.addEventListener('click', () => {
       playUiClick();
       haptics.tapButton();
       const name = window.prompt('New Playlist Name:', `Playlist ${this.playlists.length + 1}`);
@@ -504,19 +665,7 @@ export class FreePlayComposer {
       this.render();
     });
 
-    this.container.querySelector('#btn-pl-rename')?.addEventListener('click', () => {
-      const pl = this.playlists.find((p) => p.id === this.activePlaylistId);
-      if (!pl) return;
-      playUiClick();
-      haptics.tapButton();
-      const name = window.prompt('Rename Playlist:', pl.name);
-      if (!name?.trim()) return;
-      pl.name = name.trim();
-      this.onPlaylistsChange(this.playlists);
-      this.render();
-    });
-
-    this.container.querySelector('#btn-comp-save')?.addEventListener('click', () => {
+    this.dockLeft.querySelector('#btn-comp-save')?.addEventListener('click', () => {
       const pl = this.playlists.find((p) => p.id === this.activePlaylistId) || this.playlists[0];
       if (!pl) return;
       playUiClick();
@@ -533,33 +682,7 @@ export class FreePlayComposer {
       this.render();
     });
 
-    this.container.querySelectorAll<HTMLButtonElement>('[data-load-track]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const pl = this.playlists.find((p) => p.id === this.activePlaylistId);
-        const trk = pl?.tracks.find((t) => t.id === btn.dataset.loadTrack);
-        if (!trk) return;
-        playUiClick();
-        haptics.tapButton();
-        this.stopPlayback();
-        this.currentTrack = structuredClone(trk);
-        this.selectedNoteId = null;
-        this.render();
-      });
-    });
-
-    this.container.querySelectorAll<HTMLButtonElement>('[data-del-track]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const pl = this.playlists.find((p) => p.id === this.activePlaylistId);
-        if (!pl) return;
-        playUiClick();
-        haptics.tapButton();
-        pl.tracks = pl.tracks.filter((t) => t.id !== btn.dataset.delTrack);
-        this.onPlaylistsChange(this.playlists);
-        this.render();
-      });
-    });
-
-    this.container.querySelector('#btn-export-mp3')?.addEventListener('click', async () => {
+    this.dockLeft.querySelector('#btn-export-mp3')?.addEventListener('click', async () => {
       if (this.currentTrack.notes.length === 0) {
         this.onToast('Add or record some notes before exporting MP3!');
         haptics.miss();
@@ -584,7 +707,7 @@ export class FreePlayComposer {
       }
     });
 
-    this.container.querySelector('#btn-export-txt')?.addEventListener('click', () => {
+    this.dockLeft.querySelector('#btn-export-txt')?.addEventListener('click', () => {
       playUiClick();
       haptics.tapButton();
       const text = serializePartitureText(this.currentTrack);
@@ -598,7 +721,7 @@ export class FreePlayComposer {
       this.onToast('📄 Partiture .txt downloaded!');
     });
 
-    this.container.querySelector<HTMLInputElement>('#input-import-txt')?.addEventListener('change', async (e) => {
+    this.dockLeft.querySelector<HTMLInputElement>('#input-import-txt')?.addEventListener('change', async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const raw = await file.text();
@@ -622,7 +745,7 @@ export class FreePlayComposer {
     this.playStartPerf = performance.now() - this.playheadBeat * secPerBeat * 1000;
     this.lastMetronomeBeat = Math.floor(this.playheadBeat) - 1;
 
-    const btn = this.container.querySelector('#btn-comp-play');
+    const btn = this.dockRight.querySelector('#btn-comp-play');
     if (btn) btn.textContent = '⏸ Pause';
 
     const maxEndBeat = Math.max(
@@ -656,8 +779,7 @@ export class FreePlayComposer {
         playheadEl.style.left = `${84 + this.playheadBeat * PX_PER_BEAT}px`;
       }
 
-      // Auto-scroll horizontally to follow playhead progression!
-      this.scrollToBeat(this.playheadBeat);
+      this.ensureBeatVisibleSmooth(this.playheadBeat, true);
 
       if (this.playheadBeat >= maxEndBeat) {
         this.stopPlayback();
@@ -673,7 +795,7 @@ export class FreePlayComposer {
     this.isPlaying = false;
     if (this.playTimer !== null) cancelAnimationFrame(this.playTimer);
     this.playTimer = null;
-    const btn = this.container.querySelector('#btn-comp-play');
+    const btn = this.dockRight.querySelector('#btn-comp-play');
     if (btn) btn.textContent = '▶ Play';
   }
 
@@ -684,8 +806,8 @@ export class FreePlayComposer {
     this.lastMetronomeBeat = -1;
     const playheadEl = this.container.querySelector<HTMLElement>('#partiture-playhead');
     if (playheadEl) playheadEl.style.left = '84px';
-    const scrollEl = this.container.querySelector<HTMLElement>('#partiture-scroll');
-    if (scrollEl) scrollEl.scrollLeft = 0;
+    const viewport = this.getScrollViewport();
+    if (viewport) viewport.scrollTo({ left: 0, behavior: 'smooth' });
   }
 
   private slugify(s: string): string {

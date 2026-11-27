@@ -1515,3 +1515,130 @@ dialog.game-dialog-wide {
 .ocarina-bottom-dock .ocarina-svg-wrapper {
   max-width: 520px;
 }
+
+/* Stage 2 M8: Taiko-Web-Inspired Arcade Stage & Results Styles */
+.arcade-song-dropdown,
+.comp-sample-select {
+  min-width: 220px;
+  max-width: 100%;
+  font-weight: 700;
+}
+
+.taiko-stage-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.taiko-top-banner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.taiko-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.taiko-bpm-badge {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--zelda-gold);
+  background: rgba(242, 201, 76, 0.14);
+  border: 1px solid var(--border-subtle);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.taiko-soul-gauge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(7, 11, 24, 0.8);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.soul-label,
+.soul-clear-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--zelda-gold);
+}
+
+.soul-track {
+  flex: 1;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.soul-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff6b35, #f2c94c, #27ae60);
+  transition: width 0.15s ease;
+}
+
+.taiko-festival-stage {
+  position: relative;
+  height: 76px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1.5px solid var(--border-subtle);
+}
+
+.festival-bg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.75;
+}
+
+.festival-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 11, 24, 0.35);
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  color: #fde68a;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+}
+
+.taiko-results-hero {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 1.15rem;
+  border: 2px solid var(--zelda-gold);
+}
+
+.results-hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.results-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(7, 11, 24, 0.88), rgba(7, 11, 24, 0.58));
+}
+
+.taiko-results-hero .results-top {
+  position: relative;
+  z-index: 2;
+}

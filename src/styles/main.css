@@ -1371,7 +1371,7 @@ dialog.game-dialog-wide {
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
-  z-index: 2;
+  z-index: 20;
 }
 
 .title-badge {
